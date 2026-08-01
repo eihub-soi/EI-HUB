@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { mockEngine } from '../../services/mockEngine';
+import { getAvatarUrl } from '../../utils/avatar';
 import { Profile, UserRole } from '../../types';
 import { toast } from 'sonner';
 import { turso, isTursoConfigured, client as tursoClient } from '../../turso/client';
@@ -247,7 +248,7 @@ export const UserManagement: React.FC = () => {
           ...formData,
           id: profileId,
           firebase_uid: firebaseUid,
-          avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          avatar_url: getAvatarUrl({ role: formData.role }),
         }, formData.password);
         toast.success(`Created new ${formData.role} user: ${formData.full_name}`);
       }
@@ -452,7 +453,7 @@ export const UserManagement: React.FC = () => {
                 <tr key={u.id} className="hover:bg-slate-900/40 transition-colors">
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
-                      <img src={u.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'} alt={u.full_name} className="w-8 h-8 rounded-xl object-cover" />
+                      <img src={getAvatarUrl(u)} alt={u.full_name} className="w-8 h-8 rounded-full object-cover" />
                       <div>
                         <p className="font-bold text-white">{u.full_name}</p>
                         <p className="text-[10px] text-slate-400">{u.register_number || u.faculty_id || 'Admin ID'}</p>
@@ -695,9 +696,9 @@ export const UserManagement: React.FC = () => {
             <div className="space-y-4 text-xs">
               <div className="flex flex-col items-center text-center p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-2">
                 <img 
-                  src={selectedDetailsUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'} 
+                  src={getAvatarUrl(selectedDetailsUser)} 
                   alt={selectedDetailsUser.full_name} 
-                  className="w-16 h-16 rounded-2xl object-cover border border-white/10" 
+                  className="w-16 h-16 rounded-full object-cover border border-white/10" 
                 />
                 <div>
                   <h4 className="text-sm font-bold text-white">{selectedDetailsUser.full_name}</h4>

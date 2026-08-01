@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserRole } from '../../types';
 import { mockEngine } from '../../services/mockEngine';
+import { getAvatarUrl } from '../../utils/avatar';
 import { 
   Bell, 
   Search, 
@@ -167,9 +168,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onToggleSidebar })
               className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-indigo-500/40 transition-all"
             >
               <img
-                src={user?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                src={getAvatarUrl(user)}
                 alt={user?.full_name}
-                className="w-8 h-8 rounded-xl object-cover ring-2 ring-indigo-500/30"
+                className="w-8 h-8 rounded-full object-cover ring-2 ring-indigo-500/30"
               />
               <span className="text-xs font-semibold text-slate-200 hidden lg:inline">{user?.full_name}</span>
             </button>

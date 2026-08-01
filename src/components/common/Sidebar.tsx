@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { mockEngine } from '../../services/mockEngine';
+import { getAvatarUrl } from '../../utils/avatar';
 import { 
   LayoutDashboard, 
   Boxes, 
@@ -24,12 +25,14 @@ import {
 
 interface SidebarProps {
   isOpen: boolean;
-  onClose?: () => void;
+  onClose: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { user, role, logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const role = user?.role || 'student';
 
   const requests = mockEngine.getRequests();
   const pendingRequestsCount = requests.filter((r) => r.status === 'pending').length;
@@ -49,9 +52,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         {/* User Card matching UI image preview */}
         <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-slate-900/80 to-indigo-950/40 border border-white/10">
           <img
-            src={user?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+            src={getAvatarUrl(user)}
             alt={user?.full_name}
-            className="w-10 h-10 rounded-xl object-cover ring-2 ring-indigo-500/40"
+            className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-500/40"
           />
           <div className="overflow-hidden">
             <h3 className="text-xs font-bold text-white truncate">{user?.full_name}</h3>

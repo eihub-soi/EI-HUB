@@ -12,7 +12,14 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    strictPort: true,
     open: false,
+    hmr: {
+      host: 'localhost',
+      port: 3000,
+      clientPort: 3000,
+      protocol: 'ws',
+    },
     proxy: {
       '/api-brevo': {
         target: 'https://api.brevo.com',

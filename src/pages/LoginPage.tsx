@@ -390,45 +390,96 @@ export const LoginPage: React.FC = () => {
           {authMode === 'login' && (
             <div className="space-y-4">
               
-              {/* Role Tabs */}
-              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-950/60 border border-white/10">
+              {/* Role Cards Grid matching design */}
+              <div className="grid grid-cols-3 gap-3.5 py-1">
+                {/* Student Card */}
                 <button
                   type="button"
                   onClick={() => handleTabChange('student')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all ${
+                  className={`flex flex-col items-center p-3.5 rounded-2xl border transition-all duration-300 ${
                     activeTab === 'student'
-                      ? 'bg-indigo-600/80 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'border-blue-500 bg-blue-500/10 scale-105 shadow-[0_0_15px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20'
+                      : 'border-white/5 bg-slate-950/20 opacity-50 hover:opacity-85 hover:scale-102'
                   }`}
                 >
-                  <GraduationCap className="w-3.5 h-3.5" />
-                  <span>Student</span>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
+                    activeTab === 'student' ? 'ring-2 ring-blue-500 bg-blue-50' : 'bg-blue-50/10'
+                  }`}>
+                    <img src="/avatars/student.png" alt="Student Avatar" className="w-full h-full object-cover" />
+                  </div>
+                  <span className={`text-[13px] font-extrabold mt-2.5 transition-colors ${
+                    activeTab === 'student' ? 'text-blue-400' : 'text-slate-400'
+                  }`}>
+                    Student
+                  </span>
+                  <div className={`mt-2 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[9px] font-extrabold tracking-wider uppercase border transition-all ${
+                    activeTab === 'student'
+                      ? 'bg-blue-500/10 text-blue-300 border-blue-500/20'
+                      : 'bg-slate-950/40 text-slate-500 border-white/5'
+                  }`}>
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>Student</span>
+                  </div>
                 </button>
 
+                {/* Faculty Card */}
                 <button
                   type="button"
                   onClick={() => handleTabChange('faculty')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all ${
+                  className={`flex flex-col items-center p-3.5 rounded-2xl border transition-all duration-300 ${
                     activeTab === 'faculty'
-                      ? 'bg-indigo-600/80 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'border-emerald-500 bg-emerald-500/10 scale-105 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20'
+                      : 'border-white/5 bg-slate-950/20 opacity-50 hover:opacity-85 hover:scale-102'
                   }`}
                 >
-                  <Briefcase className="w-3.5 h-3.5" />
-                  <span>Faculty</span>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
+                    activeTab === 'faculty' ? 'ring-2 ring-emerald-500 bg-emerald-50' : 'bg-emerald-50/10'
+                  }`}>
+                    <img src="/avatars/faculty.png" alt="Faculty Avatar" className="w-full h-full object-cover" />
+                  </div>
+                  <span className={`text-[13px] font-extrabold mt-2.5 transition-colors ${
+                    activeTab === 'faculty' ? 'text-emerald-400' : 'text-slate-400'
+                  }`}>
+                    Faculty
+                  </span>
+                  <div className={`mt-2 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[9px] font-extrabold tracking-wider uppercase border transition-all ${
+                    activeTab === 'faculty'
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                      : 'bg-slate-950/40 text-slate-500 border-white/5'
+                  }`}>
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>Faculty</span>
+                  </div>
                 </button>
 
+                {/* Admin Card */}
                 <button
                   type="button"
                   onClick={() => handleTabChange('admin')}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all ${
+                  className={`flex flex-col items-center p-3.5 rounded-2xl border transition-all duration-300 ${
                     activeTab === 'admin'
-                      ? 'bg-gradient-to-r from-amber-500 to-gold-600 text-slate-950 shadow-sm font-extrabold'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'border-purple-500 bg-purple-500/10 scale-105 shadow-[0_0_15px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/20'
+                      : 'border-white/5 bg-slate-950/20 opacity-50 hover:opacity-85 hover:scale-102'
                   }`}
                 >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Admin</span>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
+                    activeTab === 'admin' ? 'ring-2 ring-purple-500 bg-purple-50' : 'bg-purple-50/10'
+                  }`}>
+                    <img src="/avatars/admin.png" alt="Admin Avatar" className="w-full h-full object-cover" />
+                  </div>
+                  <span className={`text-[13px] font-extrabold mt-2.5 transition-colors ${
+                    activeTab === 'admin' ? 'text-purple-400' : 'text-slate-400'
+                  }`}>
+                    Admin
+                  </span>
+                  <div className={`mt-2 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[9px] font-extrabold tracking-wider uppercase border transition-all ${
+                    activeTab === 'admin'
+                      ? 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+                      : 'bg-slate-950/40 text-slate-500 border-white/5'
+                  }`}>
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Admin</span>
+                  </div>
                 </button>
               </div>
 

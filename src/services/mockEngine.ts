@@ -100,7 +100,23 @@ class MockEngine {
   // --- COMPONENTS ---
   public getComponents(): ComponentItem[] {
     const data = localStorage.getItem(STORAGE_KEYS.COMPONENTS);
-    return data ? JSON.parse(data) : INITIAL_COMPONENTS;
+    const comps: ComponentItem[] = data ? JSON.parse(data) : INITIAL_COMPONENTS;
+    
+    // Dynamically retrieve borrow requests to compute active loan quantities
+    const requests = this.getRequests();
+
+    return comps.map((c) => {
+      // Find all approved requests for this component that have not yet been returned
+      const activeBorrowedQty = requests
+        .filter((r) => r.component_id === c.id && r.status === 'approved' && !r.returned_at)
+        .reduce((acc, r) => acc + r.quantity, 0);
+
+      return {
+        ...c,
+        borrowed_stock: activeBorrowedQty,
+        available_stock: Math.max(0, c.total_stock - activeBorrowedQty),
+      };
+    });
   }
 
   public addComponent(comp: Omit<ComponentItem, 'id' | 'created_at' | 'updated_at' | 'borrowed_stock' | 'available_stock'> & { available_stock?: number }): ComponentItem {
