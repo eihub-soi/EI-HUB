@@ -1,0 +1,140 @@
+import React, { useState } from 'react';
+import { mockEngine } from '../../services/mockEngine';
+import { useAuth } from '../../contexts/AuthContext';
+import { BorrowRequest } from '../../types';
+import { toast } from 'sonner';
+import { RotateCcw, CheckCircle2, Clock, Info, ShieldCheck } from 'lucide-react';
+
+export const ReturnPortal: React.FC = () => {
+  const { user } = useAuth();
+  const [activeLoans, setActiveLoans] = useState<BorrowRequest[]>(
+    mockEngine.getRequests().filter((r) => r.status === 'approved' && !r.return_requested_at && (r.student_id === user?.id || r.student_id === 'usr-student-1'))
+  );
+  const [selectedReq, setSelectedReq] = useState<BorrowRequest | null>(null);
+  const [condition, setCondition] = useState('Good Working Condition');
+  const [description, setDescription] = useState('');
+
+  const handleProcessReturn = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReq) return;
+
+    try {
+      mockEngine.requestReturnComponent(selectedReq.id, user?.id || 'usr-student-1', condition, description);
+      toast.success(`Return request submitted! Faculty will inspect and confirm the return.`);
+      setActiveLoans(mockEngine.getRequests().filter((r) => r.status === 'approved' && !r.return_requested_at && (r.student_id === user?.id || r.student_id === 'usr-student-1')));
+      setSelectedReq(null);
+      setDescription('');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to request return');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-extrabold text-white tracking-tight">Return Portal</h1>
+        <p className="text-xs text-slate-400 mt-0.5">Initiate component return and submit condition report</p>
+      </div>
+
+      {activeLoans.length === 0 ? (
+        <div className="p-12 text-center glass-card rounded-3xl border border-white/10 space-y-3">
+          <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+          <h3 className="text-base font-bold text-white">No Active Component Loans</h3>
+          <p className="text-xs text-slate-400">You currently have no active borrowed components pending return.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {activeLoans.map((req) => (
+            <div key={req.id} className="p-5 rounded-3xl glass-card border border-white/10 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <img src={req.component_image} alt={req.component_name} className="w-12 h-12 rounded-2xl object-cover" />
+                  <div>
+                    <h3 className="text-sm font-bold text-white">{req.component_name}</h3>
+                    <p className="text-[10px] text-slate-400">Code: {req.request_code} • Qty: {req.quantity}</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Due: {new Date(req.expected_return_at).toLocaleDateString()}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-900/60 text-xs space-y-1">
+                <p className="text-slate-400 text-[10px]">Issued By</p>
+                <p className="font-semibold text-white">{req.approved_by_name || 'Prof. Robert Chen'}</p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setSelectedReq(req);
+                  setCondition('Good Working Condition');
+                  setDescription('');
+                }}
+                className="w-full py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all"
+              >
+                <RotateCcw className="w-4 h-4" /> Initiate Return
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Return Modal */}
+      {selectedReq && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-md glass-card p-6 border border-white/20 shadow-2xl rounded-3xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-indigo-400" /> Return Inspection ({selectedReq.component_name})
+            </h3>
+
+            <form onSubmit={handleProcessReturn} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Component Condition Status</label>
+                <select
+                  value={condition}
+                  onChange={(e) => setCondition(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl glass-input text-white"
+                >
+                  <option value="Good Working Condition">Good Working Condition</option>
+                  <option value="Minor Wear / Scratches">Minor Wear / Scratches</option>
+                  <option value="Damaged / Faulty Pin">Damaged / Faulty Pin</option>
+                  <option value="Lost Accessory / Wire">Lost Accessory / Wire</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Description (Optional)</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the component state or details of wear/accessories..."
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-xl glass-input text-white resize-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-300 flex items-start gap-2">
+                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Please return the physical component to Lab Cabinet ({selectedReq.component_name}) for physical faculty verification.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setSelectedReq(null)} className="px-4 py-2 text-slate-400 hover:text-white">
+                  Cancel
+                </button>
+                <button type="submit" className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-indigo-glow">
+                  Request Return
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

@@ -1,0 +1,12 @@
+{
+  "venvPath": "d:\\EI HUB 2\\backend",
+  "venv": ".venv",
+  "include": [
+    "backend"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "backend/.venv"
+  ]
+}
