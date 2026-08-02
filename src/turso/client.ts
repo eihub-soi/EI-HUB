@@ -475,6 +475,10 @@ export const turso = {
           sql: 'UPDATE _auth_users SET password = ? WHERE email = ?',
           args: [newPassword, email.toLowerCase()]
         });
+        await client.execute({
+          sql: 'UPDATE profiles SET password = ? WHERE email = ?',
+          args: [newPassword, email.toLowerCase()]
+        });
         return { error: null };
       } catch (err: any) {
         return { error: { message: err.message || err } };

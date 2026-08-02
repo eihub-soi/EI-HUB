@@ -474,6 +474,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
+  useEffect(() => {
+    const handleProfilesChange = () => {
+      if (user) {
+        const latestProfiles = mockEngine.getProfiles();
+        const updatedProfile = latestProfiles.find(p => p.id === user.id);
+        if (updatedProfile) {
+          const hasChanged = JSON.stringify(updatedProfile) !== JSON.stringify(user);
+          if (hasChanged) {
+            console.log('[AuthContext] Active profile change detected. Syncing session details.');
+            setUser(updatedProfile);
+            localStorage.setItem('ei_hub_active_user_profile', JSON.stringify(updatedProfile));
+          }
+        }
+      }
+    };
+
+    const unsubscribe = mockEngine.subscribe(handleProfilesChange);
+    return () => {
+      unsubscribe();
+    };
+  }, [user]);
+
   return (
     <AuthContext.Provider
       value={{

@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
 
 class MockEngine {
   private listeners: Array<() => void> = [];
+  private syncPromise: Promise<void> | null = null;
 
   constructor() {
     this.initStorage();
@@ -25,44 +26,54 @@ class MockEngine {
   /**
    * Synchronizes local storage data with the Python FastAPI backend
    */
-  public async syncWithTurso() {
-    try {
-      console.log('[MockEngine] Synchronizing datasets with Python Backend...');
-      
-      // 1. Sync components
-      const comps = await apiRequest('/api/components');
-      localStorage.setItem(STORAGE_KEYS.COMPONENTS, JSON.stringify(comps));
-
-      // 2. Sync borrow requests
-      const reqs = await apiRequest('/api/requests');
-      localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(reqs));
-
-      // 3. Sync purchase orders
-      const purchases = await apiRequest('/api/purchase-orders');
-      localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases));
-
-      // 4. Sync user profiles
-      const profiles = await apiRequest('/api/profiles');
-      localStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
-
-      // 5. Sync audit logs
-      const logs = await apiRequest('/api/activity-logs');
-      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
-
-      // 6. Sync user notifications (only if authenticated)
-      if (typeof window !== 'undefined' && localStorage.getItem('ei_hub_active_user_id')) {
-        try {
-          const notifications = await apiRequest('/api/notifications');
-          localStorage.setItem(STORAGE_KEYS.NOTIFS, JSON.stringify(notifications));
-        } catch (notifErr) {
-          console.warn('[MockEngine] Failed to sync notifications:', notifErr);
-        }
-      }
-
-      this.notify();
-    } catch (e) {
-      console.warn('[MockEngine] Connection to FastAPI backend failed, running in local fallback mode:', e);
+  public async syncWithTurso(): Promise<void> {
+    if (this.syncPromise) {
+      return this.syncPromise;
     }
+
+    this.syncPromise = (async () => {
+      try {
+        console.log('[MockEngine] Synchronizing datasets with Python Backend...');
+        
+        // 1. Sync components
+        const comps = await apiRequest('/api/components');
+        localStorage.setItem(STORAGE_KEYS.COMPONENTS, JSON.stringify(comps));
+
+        // 2. Sync borrow requests
+        const reqs = await apiRequest('/api/requests');
+        localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(reqs));
+
+        // 3. Sync purchase orders
+        const purchases = await apiRequest('/api/purchase-orders');
+        localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases));
+
+        // 4. Sync user profiles
+        const profiles = await apiRequest('/api/profiles');
+        localStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
+
+        // 5. Sync audit logs
+        const logs = await apiRequest('/api/activity-logs');
+        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
+
+        // 6. Sync user notifications (only if authenticated)
+        if (typeof window !== 'undefined' && localStorage.getItem('ei_hub_active_user_id')) {
+          try {
+            const notifications = await apiRequest('/api/notifications');
+            localStorage.setItem(STORAGE_KEYS.NOTIFS, JSON.stringify(notifications));
+          } catch (notifErr) {
+            console.warn('[MockEngine] Failed to sync notifications:', notifErr);
+          }
+        }
+
+        this.notify();
+      } catch (e) {
+        console.warn('[MockEngine] Connection to FastAPI backend failed, running in local fallback mode:', e);
+      } finally {
+        this.syncPromise = null;
+      }
+    })();
+
+    return this.syncPromise;
   }
 
   private initStorage() {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ei-hub-cache-v1';
+const CACHE_NAME = 'ei-hub-cache-v2';
 const ASSETS = [
   '/',
   '/index.html',

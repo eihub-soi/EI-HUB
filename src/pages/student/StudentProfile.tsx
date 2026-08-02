@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { turso, isTursoConfigured } from '../../turso/client';
 import { mockEngine } from '../../services/mockEngine';
 import { isFirebaseConfigured } from '../../firebase/client';
-import { getAvatarUrl } from '../../utils/avatar';
+import { Avatar } from '../../components/common/Avatar';
 import { Mail, GraduationCap, ShieldCheck, Phone, Edit2, Check, X, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -55,10 +55,11 @@ export const StudentProfile: React.FC = () => {
 
       <div className="p-6 rounded-3xl glass-card border border-white/10 space-y-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 border-b border-white/10 pb-6 text-center sm:text-left">
-          <img
-            src={getAvatarUrl(user)}
+          <Avatar
+            user={user}
+            size="xl"
+            className="ring-4 ring-indigo-500/30"
             alt={user.full_name}
-            className="w-20 h-20 rounded-full object-cover ring-4 ring-indigo-500/30"
           />
           <div>
             <h2 className="text-xl font-bold text-white">{user.full_name}</h2>

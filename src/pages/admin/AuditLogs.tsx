@@ -1,11 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { ActivityLog } from '../../types';
 import { ShieldCheck, Search, Filter, AlertCircle, Info, Lock } from 'lucide-react';
 
 export const AuditLogs: React.FC = () => {
-  const [logs] = useState<ActivityLog[]>(mockEngine.getLogs());
+  const [logs, setLogs] = useState<ActivityLog[]>(mockEngine.getLogs());
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    // Sync initial logs on mount
+    mockEngine.syncWithTurso().then(() => {
+      setLogs(mockEngine.getLogs());
+    }).catch(err => console.error('[AuditLogs] Initial sync failed:', err));
+
+    // Subscribe to engine changes to keep React state in sync
+    const unsubscribe = mockEngine.subscribe(() => {
+      setLogs(mockEngine.getLogs());
+    });
+
+    // Poll the Turso database every 1 second (1000ms)
+    const interval = setInterval(() => {
+      mockEngine.syncWithTurso().catch(err =>
+        console.error('[AuditLogs] Periodic sync failed:', err)
+      );
+    }, 1000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, []);
 
   const filteredLogs = logs.filter(
     (l) =>

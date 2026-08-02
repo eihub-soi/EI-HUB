@@ -12,13 +12,18 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Security, Depends, Header, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import libsql_client
 from contextlib import asynccontextmanager
 import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth
+from firebase_admin import credentials, auth as firebase_auth, firestore
+from cryptography.x509 import load_pem_x509_certificate
+
+# Cache for parsed Google Public Key objects to avoid RSA decoding overhead on every request
+GOOGLE_PUBLIC_KEYS_CACHE: Dict[str, Any] = {}
 
 # Load environment
 dotenv_path = os.path.join(os.path.dirname(__file__), "../.env")
@@ -68,26 +73,24 @@ google_keys_lock = asyncio.Lock()
 
 # Rate limiting settings
 RATE_LIMIT_REQUESTS = defaultdict(list)
-RATE_LIMIT_LOCK = asyncio.Lock()
 RATE_LIMIT_MAX_REQUESTS = 100  # Max requests per window
 RATE_LIMIT_WINDOW = 60         # Window size in seconds
 
-# Periodic cleanup task for rate limiting memory leak
+# Periodic cleanup task for rate limiting memory leak (run lock-free and coroutine-safe)
 async def cleanup_rate_limits():
     while True:
         try:
             await asyncio.sleep(120)  # Prune every 2 minutes
-            async with RATE_LIMIT_LOCK:
-                now = time.time()
-                to_delete = []
-                for ip, ts in RATE_LIMIT_REQUESTS.items():
-                    valid_ts = [t for t in ts if now - t < RATE_LIMIT_WINDOW]
-                    if not valid_ts:
-                        to_delete.append(ip)
-                    else:
-                        RATE_LIMIT_REQUESTS[ip] = valid_ts
-                for ip in to_delete:
-                    del RATE_LIMIT_REQUESTS[ip]
+            now = time.time()
+            # Copy keys list to avoid ConcurrentModificationError / RuntimeError: dictionary keys changed during iteration
+            ips = list(RATE_LIMIT_REQUESTS.keys())
+            for ip in ips:
+                ts = RATE_LIMIT_REQUESTS.get(ip, [])
+                valid_ts = [t for t in ts if now - t < RATE_LIMIT_WINDOW]
+                if not valid_ts:
+                    RATE_LIMIT_REQUESTS.pop(ip, None)
+                else:
+                    RATE_LIMIT_REQUESTS[ip] = valid_ts
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -231,6 +234,21 @@ async def get_db_client() -> Any:
                 except Exception:
                     pass
                     
+                # Create performance indexes for production workloads
+                for index_name, index_sql in [
+                    ("idx_profiles_firebase_uid", "CREATE INDEX IF NOT EXISTS idx_profiles_firebase_uid ON profiles(firebase_uid)"),
+                    ("idx_profiles_email", "CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email)"),
+                    ("idx_requests_student_id", "CREATE INDEX IF NOT EXISTS idx_requests_student_id ON requests(student_id)"),
+                    ("idx_requests_component_id", "CREATE INDEX IF NOT EXISTS idx_requests_component_id ON requests(component_id)"),
+                    ("idx_requests_status", "CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)"),
+                    ("idx_activity_logs_user_id", "CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id)"),
+                    ("idx_purchase_orders_invoice_ref", "CREATE INDEX IF NOT EXISTS idx_purchase_orders_invoice_ref ON purchase_orders(invoice_ref)")
+                ]:
+                    try:
+                        await client.execute(index_sql)
+                    except Exception as err:
+                        print(f"Warning: could not create index {index_name}: {err}")
+                        
     return client
 
 @asynccontextmanager
@@ -258,6 +276,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="EI HUB API", description="Python FastAPI Backend for EI HUB", version="1.0.0", lifespan=lifespan)
 
+# Enable Gzip Compression for fast payload transfers
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
@@ -277,35 +298,110 @@ async def rate_limit_middleware(request: Request, call_next):
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
     
-    async with RATE_LIMIT_LOCK:
-        # Keep only request timestamps that fall within the current sliding window
-        timestamps = [t for t in RATE_LIMIT_REQUESTS[client_ip] if now - t < RATE_LIMIT_WINDOW]
-        RATE_LIMIT_REQUESTS[client_ip] = timestamps
+    # Keep only request timestamps that fall within the current sliding window
+    timestamps = [t for t in RATE_LIMIT_REQUESTS[client_ip] if now - t < RATE_LIMIT_WINDOW]
+    RATE_LIMIT_REQUESTS[client_ip] = timestamps
+    
+    if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
+        return Response(
+            content=json.dumps({"detail": "Too many requests. Please try again later."}),
+            status_code=429,
+            media_type="application/json"
+        )
         
-        if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
-            return Response(
-                content=json.dumps({"detail": "Too many requests. Please try again later."}),
-                status_code=429,
-                media_type="application/json"
-            )
-            
-        RATE_LIMIT_REQUESTS[client_ip].append(now)
-        
+    RATE_LIMIT_REQUESTS[client_ip].append(now)
     return await call_next(request)
 
-# Helper to run raw SQL queries
+# Structured request logger middleware
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    # Exclude static assets or documentation endpoints from verbose logging
+    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+        return await call_next(request)
+        
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        duration = time.time() - start_time
+        print(f"[API Request] {request.method} {request.url.path} - Status: {response.status_code} - Duration: {duration:.4f}s")
+        return response
+    except Exception as e:
+        duration = time.time() - start_time
+        print(f"[API Exception] {request.method} {request.url.path} - Failed after {duration:.4f}s - Error: {e}")
+        raise
+
+# Centralized exception handlers for production hardening
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return Response(
+        content=json.dumps({"detail": exc.detail}),
+        status_code=exc.status_code,
+        media_type="application/json"
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    # Log complete exception details
+    print(f"[Unhandled Error] {request.method} {request.url.path} - Details: {exc}")
+    import traceback
+    traceback.print_exc()
+    return Response(
+        content=json.dumps({"detail": "An internal server error occurred. Please try again later."}),
+        status_code=500,
+        media_type="application/json"
+    )
+
+# Helper to run raw SQL queries with automatic retry capabilities
 def row_to_dict(columns, row):
     return {col: val for col, val in zip(columns, row)}
 
 async def db_query(sql: str, params: Optional[list] = None) -> List[Dict[str, Any]]:
-    db_client = await get_db_client()
-    result = await db_client.execute(sql, params or [])
-    cols = result.columns
-    return [row_to_dict(cols, row) for row in result.rows]
+    max_retries = 3
+    delay = 0.2
+    for attempt in range(max_retries):
+        try:
+            db_client = await get_db_client()
+            result = await db_client.execute(sql, params or [])
+            cols = result.columns
+            return [row_to_dict(cols, row) for row in result.rows]
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"[DB Query Failure] Query: {sql} | Error: {e}")
+                raise
+            print(f"[DB Query Retry] Attempt {attempt + 1} failed for: {sql}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            delay *= 2
+    return []
 
 async def db_execute(sql: str, params: Optional[list] = None):
-    db_client = await get_db_client()
-    return await db_client.execute(sql, params or [])
+    max_retries = 3
+    delay = 0.2
+    for attempt in range(max_retries):
+        try:
+            db_client = await get_db_client()
+            return await db_client.execute(sql, params or [])
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"[DB Execute Failure] SQL: {sql} | Error: {e}")
+                raise
+            print(f"[DB Execute Retry] Attempt {attempt + 1} failed for: {sql}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            delay *= 2
+
+async def db_batch(statements: List[Any]) -> Any:
+    max_retries = 3
+    delay = 0.2
+    for attempt in range(max_retries):
+        try:
+            db_client = await get_db_client()
+            return await db_client.batch(statements)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"[DB Batch Failure] Error: {e}")
+                raise
+            print(f"[DB Batch Retry] Attempt {attempt + 1} failed. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            delay *= 2
 
 # Token validation helper
 security = HTTPBearer()
@@ -414,10 +510,12 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
             
         cert_pem = await get_google_public_key(kid)
         
-        from cryptography.x509 import load_pem_x509_certificate
-        cert_obj = load_pem_x509_certificate(cert_pem.encode('utf-8'))
-        public_key: Any = cert_obj.public_key()
-        
+        public_key: Any = GOOGLE_PUBLIC_KEYS_CACHE.get(kid)
+        if not public_key:
+            cert_obj = load_pem_x509_certificate(cert_pem.encode('utf-8'))
+            public_key = cert_obj.public_key()
+            GOOGLE_PUBLIC_KEYS_CACHE[kid] = public_key
+            
         decoded = jwt.decode(
             token,
             public_key,
@@ -552,8 +650,20 @@ async def log_activity(user_id: Optional[str], user_name: Optional[str], action:
     """
     await db_execute(sql, [log_id, user_id, user_name, action, entity_type, entity_id, details_str, severity, "127.0.0.1"])
 
+# In-memory capped list to prevent memory leak under high volumes
+class CappedList(list):
+    def __init__(self, max_size: int = 5000):
+        super().__init__()
+        self.max_size = max_size
+
+    def append(self, item):
+        super().append(item)
+        if len(self) > self.max_size:
+            # Keep latest 2500 items to avoid constant slicing and memory reallocation overhead
+            self[:] = self[-2500:]
+
 # In-memory notifications storage
-in_memory_notifications: List[dict] = []
+in_memory_notifications = CappedList(max_size=5000)
 
 # Notification helper
 async def add_notification(user_id: str, title: str, message: str, type_str: str = "info", link_url: Optional[str] = None):
@@ -597,29 +707,35 @@ async def get_firebase_reset_link(req: ResetLinkRequest):
             handle_code_in_app=True
         )
         
-        link = firebase_auth.generate_password_reset_link(req.email.lower().strip(), action_code_settings)
+        link = await asyncio.to_thread(
+            firebase_auth.generate_password_reset_link,
+            req.email.lower().strip(),
+            action_code_settings
+        )
         return {"oobLink": link}
     except Exception as e:
         print(f"Error generating password reset link: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# Global fetches tracking dictionary for request coalescing
+ACTIVE_FETCHES = {}
+
 # 1. Components
 @app.get("/api/components")
 async def get_components(page: Optional[int] = None, limit: Optional[int] = None):
     cache_key = f"components_list_{page}_{limit}"
     
-    # 1. First lock-free check
+    # 1. Lock-free cache check
     cached = await COMPONENTS_CACHE.get(cache_key)
     if cached is not None:
         return cached
         
-    async with COMPONENTS_CACHE_LOCK:
-        # 2. Second check inside the lock
-        cached = await COMPONENTS_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
-            
+    # 2. Request coalescing: collapse duplicate concurrent fetches into a single task
+    if cache_key in ACTIVE_FETCHES:
+        return await ACTIVE_FETCHES[cache_key]
+        
+    async def fetch_task():
         if page is None or limit is None:
             rows = await db_query("SELECT * FROM components ORDER BY created_at DESC")
         else:
@@ -639,6 +755,13 @@ async def get_components(page: Optional[int] = None, limit: Optional[int] = None
             
         await COMPONENTS_CACHE.set(cache_key, cleaned_rows)
         return cleaned_rows
+
+    task = asyncio.create_task(fetch_task())
+    ACTIVE_FETCHES[cache_key] = task
+    try:
+        return await task
+    finally:
+        ACTIVE_FETCHES.pop(cache_key, None)
 
 @app.post("/api/components")
 async def create_component(data: dict = Body(...), user: dict = Depends(get_current_user)):
@@ -681,7 +804,7 @@ async def create_component(data: dict = Body(...), user: dict = Depends(get_curr
         [log_id, user["uid"], user["name"], "CREATE_COMPONENT", "COMPONENT", comp_id, details_str, "info", "127.0.0.1"]
     )
     
-    await db_client.batch([stmt1, stmt2])
+    await db_batch([stmt1, stmt2])
     
     await COMPONENTS_CACHE.clear()
     return {"id": comp_id, "name": name, "category": category, "total_stock": total_stock, "available_stock": available_stock}
@@ -717,7 +840,7 @@ async def update_component(id: str, data: dict = Body(...), user: dict = Depends
         [log_id, user["uid"], user["name"], "UPDATE_COMPONENT", "COMPONENT", id, details_str, "info", "127.0.0.1"]
     )
     
-    await db_client.batch([stmt1, stmt2])
+    await db_batch([stmt1, stmt2])
     
     await COMPONENTS_CACHE.clear()
     return {"id": id, "name": name, "category": category}
@@ -742,7 +865,7 @@ async def delete_component(id: str, user: dict = Depends(get_current_user)):
         [log_id, user["uid"], user["name"], "DELETE_COMPONENT", "COMPONENT", id, details_str, "info", "127.0.0.1"]
     )
     
-    await db_client.batch([stmt1, stmt2])
+    await db_batch([stmt1, stmt2])
     
     await COMPONENTS_CACHE.clear()
     return {"id": id, "status": "deleted"}
@@ -758,12 +881,11 @@ async def get_requests(page: Optional[int] = None, limit: Optional[int] = None):
     if cached is not None:
         return cached
         
-    async with REQUESTS_CACHE_LOCK:
-        # 2. Double check inside lock
-        cached = await REQUESTS_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
-            
+    # 2. Request coalescing: collapse duplicate concurrent fetches into a single task
+    if cache_key in ACTIVE_FETCHES:
+        return await ACTIVE_FETCHES[cache_key]
+        
+    async def fetch_task():
         if page is None or limit is None:
             sql = """
                 SELECT r.*, 
@@ -864,6 +986,13 @@ async def get_requests(page: Optional[int] = None, limit: Optional[int] = None):
         await REQUESTS_CACHE.set(cache_key, cleaned_rows)
         return cleaned_rows
 
+    task = asyncio.create_task(fetch_task())
+    ACTIVE_FETCHES[cache_key] = task
+    try:
+        return await task
+    finally:
+        ACTIVE_FETCHES.pop(cache_key, None)
+
 @app.post("/api/requests/submit")
 async def submit_request(data: dict = Body(...), user: dict = Depends(get_current_user)):
     req_id = str(uuid.uuid4())
@@ -876,7 +1005,7 @@ async def submit_request(data: dict = Body(...), user: dict = Depends(get_curren
     
     # 1. Batch SELECT queries (Component stock, Duplicate request check, Faculty list, Student email)
     db_client = await get_db_client()
-    results = await db_client.batch([
+    results = await db_batch([
         libsql_client.Statement("SELECT name, available_stock FROM components WHERE id = ?", [component_id]),
         libsql_client.Statement("SELECT id FROM requests WHERE student_id = ? AND component_id = ? AND status = 'pending' LIMIT 1", [student_id, component_id]),
         libsql_client.Statement("SELECT id, role FROM profiles WHERE role = 'faculty' OR role = 'admin'"),
@@ -925,7 +1054,7 @@ async def submit_request(data: dict = Body(...), user: dict = Depends(get_curren
         [log_id, student_id, user["name"], "SUBMIT_REQUEST", "REQUEST", req_id, details_str, "info", "127.0.0.1"]
     ))
     
-    await db_client.batch(stmts)
+    await db_batch(stmts)
     
     # Add to in-memory notifications
     created_at_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
@@ -1038,8 +1167,7 @@ async def approve_request(id: str, data: dict = Body(...), user: dict = Depends(
         [log_id, faculty_id, user["name"], "APPROVE_REQUEST", "REQUEST", id, details_str, "info", "127.0.0.1", id, app_at]
     )
     
-    db_client = await get_db_client()
-    results = await db_client.batch([stmt1, stmt2, stmt3])
+    results = await db_batch([stmt1, stmt2, stmt3])
     
     if results[0].rows_affected == 0:
         raise HTTPException(status_code=400, detail="Cannot approve: stock depleted or request state changed concurrently")
@@ -1106,8 +1234,7 @@ async def reject_request(id: str, data: dict = Body(...), user: dict = Depends(g
         [log_id, faculty_id, user["name"], "REJECT_REQUEST", "REQUEST", id, details_str, "info", "127.0.0.1", id, rej_at]
     )
     
-    db_client = await get_db_client()
-    results = await db_client.batch([stmt1, stmt2])
+    results = await db_batch([stmt1, stmt2])
     
     if results[0].rows_affected == 0:
         raise HTTPException(status_code=400, detail="Cannot reject: request state changed concurrently")
@@ -1184,8 +1311,7 @@ async def request_return(id: str, data: dict = Body(...), user: dict = Depends(g
     )
     stmts.append(stmt2)
     
-    db_client = await get_db_client()
-    results = await db_client.batch(stmts)
+    results = await db_batch(stmts)
     
     if results[0].rows_affected == 0:
         raise HTTPException(status_code=400, detail="Cannot request return: state changed concurrently")
@@ -1278,8 +1404,7 @@ async def process_return(id: str, data: dict = Body(...), user: dict = Depends(g
     )
     stmts.append(stmt3)
     
-    db_client = await get_db_client()
-    results = await db_client.batch(stmts)
+    results = await db_batch(stmts)
     
     if results[0].rows_affected == 0:
         raise HTTPException(status_code=400, detail="Cannot process return: state changed concurrently")
@@ -1377,6 +1502,11 @@ async def update_profile(id: str, data: dict = Body(...), user: dict = Depends(g
     avatar_url = data.get("avatar_url")
     is_active = 1 if data.get("is_active", True) else 0
     role = data.get("role")
+    email = data.get("email")
+    faculty_id = data.get("faculty_id")
+    roll_number = data.get("roll_number")
+    institution = data.get("institution")
+    year_of_study = data.get("year_of_study")
     
     # Fetch current profile to compile SQL dynamically
     current = await db_query("SELECT * FROM profiles WHERE id = ?", [id])
@@ -1387,7 +1517,8 @@ async def update_profile(id: str, data: dict = Body(...), user: dict = Depends(g
     
     sql = """
         UPDATE profiles
-        SET full_name = ?, department = ?, phone = ?, register_number = ?, avatar_url = ?, is_active = ?, role = ?, updated_at = datetime('now')
+        SET full_name = ?, department = ?, phone = ?, register_number = ?, avatar_url = ?, is_active = ?, role = ?,
+            email = ?, faculty_id = ?, roll_number = ?, institution = ?, year_of_study = ?, updated_at = datetime('now')
         WHERE id = ?
     """
     await db_execute(sql, [
@@ -1398,9 +1529,71 @@ async def update_profile(id: str, data: dict = Body(...), user: dict = Depends(g
         avatar_url or c["avatar_url"],
         is_active,
         role or c["role"],
+        email or c["email"],
+        faculty_id or c["faculty_id"],
+        roll_number or c["roll_number"],
+        institution or c["institution"],
+        year_of_study or c["year_of_study"],
         id
     ])
     
+    # Update local _auth_users if email changed
+    if email:
+        old_email = c.get("email")
+        if old_email and old_email.lower().strip() != email.lower().strip():
+            try:
+                await db_execute(
+                    "UPDATE _auth_users SET email = ? WHERE email = ?",
+                    [email.lower().strip(), old_email.lower().strip()]
+                )
+                print(f"[Local Auth] Successfully updated local auth email from {old_email} to {email}")
+            except Exception as local_auth_err:
+                print(f"[Local Auth] Error updating local credentials email: {local_auth_err}")
+
+    # Sync with Firebase Auth and Firestore if Firebase Admin is initialized
+    if firebase_admin._apps:
+        uid_to_sync = c.get("firebase_uid") or id
+        if uid_to_sync:
+            # 1. Update Firebase Auth (email & disabled status)
+            try:
+                update_args = {}
+                if email and email.lower().strip() != (c.get("email") or "").lower().strip():
+                    update_args["email"] = email.lower().strip()
+                
+                old_active = int(c.get("is_active") or 0)
+                if is_active != old_active:
+                    update_args["disabled"] = (is_active == 0)
+                
+                if update_args:
+                    await asyncio.to_thread(firebase_auth.update_user, uid_to_sync, **update_args)
+                    print(f"[Firebase Auth] Successfully updated user: {uid_to_sync}")
+            except Exception as fb_err:
+                print(f"[Firebase Auth] Error updating user in Firebase Auth: {fb_err}")
+                
+            # 2. Update Firebase Firestore document
+            try:
+                fs_client = firestore.client()
+                profile_ref = fs_client.collection("profiles").document(id)
+                updated_fields = {
+                    "full_name": full_name or c["full_name"],
+                    "department": department or c["department"],
+                    "phone": phone or c["phone"],
+                    "register_number": register_number or c["register_number"],
+                    "avatar_url": avatar_url or c["avatar_url"],
+                    "is_active": is_active == 1,
+                    "role": role or c["role"],
+                    "email": (email or c["email"]).lower().strip() if (email or c["email"]) else None,
+                    "faculty_id": faculty_id or c["faculty_id"],
+                    "roll_number": roll_number or c["roll_number"],
+                    "institution": institution or c["institution"],
+                    "year_of_study": year_of_study or c["year_of_study"],
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+                await asyncio.to_thread(profile_ref.set, updated_fields, merge=True)
+                print(f"[Firebase Firestore] Successfully updated user profile document: {id}")
+            except Exception as fs_err:
+                print(f"[Firebase Firestore] Error updating profile document in Firestore: {fs_err}")
+
     # Invalidate profile cache
     await USER_PROFILE_CACHE.clear()
     
@@ -1429,7 +1622,7 @@ async def delete_profile(id: str, user: dict = Depends(get_current_user)):
         uid_to_delete = firebase_uid or id
         if uid_to_delete:
             try:
-                firebase_auth.delete_user(uid_to_delete)
+                await asyncio.to_thread(firebase_auth.delete_user, uid_to_delete)
                 print(f"[Firebase Auth] Successfully deleted user with UID: {uid_to_delete}")
             except Exception as fb_err:
                 print(f"[Firebase Auth] Error deleting user by UID {uid_to_delete}: {fb_err}")
@@ -1438,8 +1631,8 @@ async def delete_profile(id: str, user: dict = Depends(get_current_user)):
         if email:
             try:
                 try:
-                    fb_user = firebase_auth.get_user_by_email(email.lower().strip())
-                    firebase_auth.delete_user(fb_user.uid)
+                    fb_user = await asyncio.to_thread(firebase_auth.get_user_by_email, email.lower().strip())
+                    await asyncio.to_thread(firebase_auth.delete_user, fb_user.uid)
                     print(f"[Firebase Auth] Successfully deleted user by email: {email}")
                 except firebase_auth.UserNotFoundError:
                     pass
@@ -1448,9 +1641,9 @@ async def delete_profile(id: str, user: dict = Depends(get_current_user)):
                 
         # Delete from Firebase Firestore
         try:
-            from firebase_admin import firestore
             fs_client = firestore.client()
-            fs_client.collection("profiles").document(id).delete()
+            profile_ref = fs_client.collection("profiles").document(id)
+            await asyncio.to_thread(profile_ref.delete)
             print(f"[Firebase Firestore] Deleted document for profile: {id}")
         except Exception as fs_err:
             print(f"[Firebase Firestore] Error deleting document {id} from Firestore: {fs_err}")
@@ -1597,8 +1790,7 @@ async def create_purchase_order(data: dict = Body(...), user: dict = Depends(get
     )
     stmts.append(stmt3)
     
-    db_client = await get_db_client()
-    await db_client.batch(stmts)
+    await db_batch(stmts)
     
     await COMPONENTS_CACHE.clear()
     return {"id": po_id, "po_number": po_number}
@@ -1651,8 +1843,7 @@ async def update_purchase_order(po_id: str, data: dict = Body(...), user: dict =
             )
             stmts.append(stmt2)
             
-    db_client = await get_db_client()
-    await db_client.batch(stmts)
+    await db_batch(stmts)
     await COMPONENTS_CACHE.clear()
     return {"status": "success"}
 
@@ -1689,8 +1880,7 @@ async def delete_purchase_order(po_id: str, user: dict = Depends(get_current_use
             )
             stmts.append(stmt2)
             
-    db_client = await get_db_client()
-    await db_client.batch(stmts)
+    await db_batch(stmts)
     await COMPONENTS_CACHE.clear()
     return {"status": "success"}
 
@@ -1708,9 +1898,24 @@ async def check_reminders():
     """)
     
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_str = now.strftime('%Y-%m-%d')
+    
+    # Query database to find which reminders have already been sent today to prevent duplicate emails per day
+    sent_today = await db_query("""
+        SELECT entity_id 
+        FROM activity_logs 
+        WHERE action = 'SEND_REMINDER' 
+          AND created_at LIKE ?
+    """, [f"{today_str}%"])
+    sent_today_ids = {row["entity_id"] for row in sent_today}
+    
     approaching = {}
     
     for r in active_loans:
+        # Prevent sending more than one email reminder per day per borrow request
+        if r["id"] in sent_today_ids:
+            continue
+            
         try:
             req_date = datetime.fromisoformat(r["requested_at"].replace("Z", ""))
         except Exception:
@@ -1744,8 +1949,8 @@ async def check_reminders():
         days_remaining = (expected_return_date.date() - now.date()).days
         if days_remaining != 3:
             continue
-        # If it has been borrowed for a while (e.g. 7 days or more) or is approaching deadline
-        # Let's group them by student email to consolidate
+            
+        # Group them by student email to consolidate
         email = r["student_email"]
         if email and email != "N/A" and "@" in email:
             if email not in approaching:
@@ -1787,6 +1992,17 @@ async def check_reminders():
         
         # 2. Queue email
         await EMAIL_QUEUE.put((email, f"EI HUB - Return Deadline Reminder ({len(items)} items)", html, None))
+        
+        # 3. Log that the reminder was sent to prevent daily duplicate sending
+        for it in items:
+            await log_activity(
+                user_id=it["student_id"],
+                user_name=student_name,
+                action="SEND_REMINDER",
+                entity_type="REQUEST",
+                entity_id=it["id"],
+                details={"message": "Sent return deadline reminder email"}
+            )
         return True
 
     for email, info in approaching.items():

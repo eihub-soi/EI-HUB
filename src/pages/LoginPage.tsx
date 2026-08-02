@@ -405,7 +405,7 @@ export const LoginPage: React.FC = () => {
                   <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
                     activeTab === 'student' ? 'ring-2 ring-blue-500 bg-blue-50' : 'bg-blue-50/10'
                   }`}>
-                    <img src="/avatars/student.png" alt="Student Avatar" className="w-full h-full object-cover" />
+                    <img src="/avatars/student.png?v=2" alt="Student Avatar" className="w-full h-full object-cover" />
                   </div>
                   <span className={`text-[13px] font-extrabold mt-2.5 transition-colors ${
                     activeTab === 'student' ? 'text-blue-400' : 'text-slate-400'
@@ -435,7 +435,7 @@ export const LoginPage: React.FC = () => {
                   <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
                     activeTab === 'faculty' ? 'ring-2 ring-emerald-500 bg-emerald-50' : 'bg-emerald-50/10'
                   }`}>
-                    <img src="/avatars/faculty.png" alt="Faculty Avatar" className="w-full h-full object-cover" />
+                    <img src="/avatars/faculty.png?v=2" alt="Faculty Avatar" className="w-full h-full object-cover" />
                   </div>
                   <span className={`text-[13px] font-extrabold mt-2.5 transition-colors ${
                     activeTab === 'faculty' ? 'text-emerald-400' : 'text-slate-400'
@@ -465,7 +465,7 @@ export const LoginPage: React.FC = () => {
                   <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden transition-all duration-300 ${
                     activeTab === 'admin' ? 'ring-2 ring-purple-500 bg-purple-50' : 'bg-purple-50/10'
                   }`}>
-                    <img src="/avatars/admin.png" alt="Admin Avatar" className="w-full h-full object-cover" />
+                    <img src="/avatars/admin.png?v=2" alt="Admin Avatar" className="w-full h-full object-cover" />
                   </div>
                   <span className={`text-[13px] font-extrabold mt-2.5 transition-colors ${
                     activeTab === 'admin' ? 'text-purple-400' : 'text-slate-400'

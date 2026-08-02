@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { mockEngine } from '../../services/mockEngine';
-import { getAvatarUrl } from '../../utils/avatar';
+import { Avatar } from './Avatar';
 import { 
   LayoutDashboard, 
   Boxes, 
@@ -51,10 +51,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* User Card matching UI image preview */}
         <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-slate-900/80 to-indigo-950/40 border border-white/10">
-          <img
-            src={getAvatarUrl(user)}
+          <Avatar
+            user={user}
+            size="md"
+            className="ring-2 ring-indigo-500/40"
             alt={user?.full_name}
-            className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-500/40"
           />
           <div className="overflow-hidden">
             <h3 className="text-xs font-bold text-white truncate">{user?.full_name}</h3>
