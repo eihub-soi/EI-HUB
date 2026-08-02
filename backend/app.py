@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Security, Depends, Header, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -234,10 +235,33 @@ async def get_db_client() -> Any:
                 except Exception:
                     pass
                     
+                # Migrate profiles table to add username column if not exists
+                try:
+                    await client.execute("ALTER TABLE profiles ADD COLUMN username TEXT")
+                    print("Profiles database schema migrated successfully (username).")
+                except Exception:
+                    pass
+
+                # Set default unique usernames for existing profiles
+                try:
+                    await client.execute("""
+                        UPDATE profiles 
+                        SET username = LOWER(email) 
+                        WHERE username IS NULL AND email IS NOT NULL
+                    """)
+                    await client.execute("""
+                        UPDATE profiles 
+                        SET username = LOWER(id) 
+                        WHERE username IS NULL
+                    """)
+                except Exception as e:
+                    print("Error setting default usernames:", e)
+                    
                 # Create performance indexes for production workloads
                 for index_name, index_sql in [
                     ("idx_profiles_firebase_uid", "CREATE INDEX IF NOT EXISTS idx_profiles_firebase_uid ON profiles(firebase_uid)"),
                     ("idx_profiles_email", "CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email)"),
+                    ("idx_profiles_username", "CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username)"),
                     ("idx_requests_student_id", "CREATE INDEX IF NOT EXISTS idx_requests_student_id ON requests(student_id)"),
                     ("idx_requests_component_id", "CREATE INDEX IF NOT EXISTS idx_requests_component_id ON requests(component_id)"),
                     ("idx_requests_status", "CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)"),
@@ -312,6 +336,60 @@ async def rate_limit_middleware(request: Request, call_next):
     RATE_LIMIT_REQUESTS[client_ip].append(now)
     return await call_next(request)
 
+# Strict email validation middleware rejecting any email value with uppercase letters
+@app.middleware("http")
+async def strict_email_validation_middleware(request: Request, call_next):
+    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+        return await call_next(request)
+
+    # 1. Check query parameters
+    for k, v in request.query_params.items():
+        if "email" in k.lower() and v:
+            if any(c.isupper() for c in v):
+                return Response(
+                    content=json.dumps({"detail": "invalid emailid/password"}),
+                    status_code=400,
+                    media_type="application/json"
+                )
+
+    # 2. Check JSON request body
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        body_bytes = await request.body()
+        if body_bytes:
+            try:
+                body_json = json.loads(body_bytes)
+                def has_uppercase_email(data):
+                    if isinstance(data, dict):
+                        for key, val in data.items():
+                            if "email" in key.lower() and isinstance(val, str) and val:
+                                if any(c.isupper() for c in val):
+                                    return True
+                            elif isinstance(val, (dict, list)):
+                                if has_uppercase_email(val):
+                                    return True
+                    elif isinstance(data, list):
+                        for item in data:
+                            if has_uppercase_email(item):
+                                return True
+                    return False
+
+                if has_uppercase_email(body_json):
+                    return Response(
+                        content=json.dumps({"detail": "invalid emailid/password"}),
+                        status_code=400,
+                        media_type="application/json"
+                    )
+            except Exception:
+                pass
+            
+            # Recreate receive channel so body can be read again
+            async def receive():
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+            request._receive = receive
+
+    return await call_next(request)
+
 # Structured request logger middleware
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):
@@ -331,6 +409,17 @@ async def logging_middleware(request: Request, call_next):
         raise
 
 # Centralized exception handlers for production hardening
+class LowercaseEmailException(Exception):
+    pass
+
+@app.exception_handler(LowercaseEmailException)
+async def lowercase_email_exception_handler(request: Request, exc: LowercaseEmailException):
+    return Response(
+        content=json.dumps({"error": "Email address must contain only lowercase letters."}),
+        status_code=400,
+        media_type="application/json"
+    )
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return Response(
@@ -463,10 +552,16 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
     # Check user profile cache first
     cached_user = await USER_PROFILE_CACHE.get(token)
     if cached_user:
+        email_val = cached_user.get("email")
+        if email_val and any(c.isupper() for c in email_val):
+            raise HTTPException(status_code=401, detail="invalid emailid/password")
         return cached_user
         
     # Helper to cache and return
     async def cache_and_return(user_dict):
+        email_val = user_dict.get("email")
+        if email_val and any(c.isupper() for c in email_val):
+            raise HTTPException(status_code=401, detail="invalid emailid/password")
         await USER_PROFILE_CACHE.set(token, user_dict)
         return user_dict
 
@@ -693,15 +788,30 @@ async def add_notification(user_id: str, title: str, message: str, type_str: str
 class ResetLinkRequest(BaseModel):
     email: str
 
+
+def validate_lowercase_email(email: str) -> str:
+    if not email:
+        return ""
+    if any(c.isupper() for c in email):
+        return "Email address must contain only lowercase letters."
+    if not re.match(r"^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$", email):
+        return "Please enter a valid email address format."
+    return ""
+
+
 @app.post("/api/auth/reset-link")
 async def get_firebase_reset_link(req: ResetLinkRequest):
     try:
         # Check if Firebase Admin is initialized
         if not firebase_admin._apps:
             raise HTTPException(status_code=500, detail="Firebase Admin SDK is not initialized. Please configure the service account.")
-        
+
+        email_error = validate_lowercase_email(req.email.strip())
+        if email_error:
+            return JSONResponse(status_code=400, content={"error": email_error})
+
         # Verify the user exists in profiles database first
-        profiles = await db_query("SELECT email FROM profiles WHERE email = ?", [req.email.lower().strip()])
+        profiles = await db_query("SELECT email FROM profiles WHERE email = ?", [req.email.strip()])
         if not profiles:
             raise HTTPException(status_code=404, detail="This email is not registered in our database.")
         
@@ -714,13 +824,15 @@ async def get_firebase_reset_link(req: ResetLinkRequest):
         
         link = await asyncio.to_thread(
             firebase_auth.generate_password_reset_link,
-            req.email.lower().strip(),
+            req.email.strip(),
             action_code_settings
         )
         return {"oobLink": link}
     except Exception as e:
         print(f"Error generating password reset link: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        return JSONResponse(status_code=400, content={"error": str(e)})
 
 
 # Global fetches tracking dictionary for request coalescing
@@ -1188,6 +1300,67 @@ async def approve_request(id: str, data: dict = Body(...), user: dict = Depends(
         "link_url": "/student/requests",
         "created_at": created_at_iso
     })
+
+    # Dispatch email asynchronously with PDF receipt attachment using email queue
+    student_email = req.get("student_email")
+    if student_email:
+        purpose_str = req.get("notes") or 'Lab Experimentation'
+        purpose_formatted = purpose_str.replace('\n', '<br/>')
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+          <div style="text-align: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
+            <span style="font-size: 18px; font-weight: 800; color: #1e1b4b; letter-spacing: 1px;">EI HUB | KITE</span>
+            <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0;">Department of Electronics & Communication Engineering</p>
+          </div>
+          
+          <div style="margin-bottom: 25px;">
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b;">Transaction Status</span>
+            <div style="font-size: 18px; font-weight: 700; color: #10b981; margin-top: 2px;">Approved & Verified</div>
+          </div>
+
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; margin-bottom: 20px; font-size: 13px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+              <tr>
+                <td style="color: #64748b; padding: 4px 0; width: 120px;">Request Code:</td>
+                <td style="color: #1e1b4b; font-weight: bold; padding: 4px 0; font-family: monospace;">{req_code}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 4px 0;">Component:</td>
+                <td style="color: #1e1b4b; font-weight: bold; padding: 4px 0;">{req["component_name"]}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 4px 0;">Quantity:</td>
+                <td style="color: #1e1b4b; font-weight: bold; padding: 4px 0;">{req["quantity"]} Units</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 4px 0; vertical-align: top;">Purpose:</td>
+                <td style="color: #1e1b4b; padding: 4px 0;">{purpose_formatted}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+            Your component borrowing request has been approved. 
+            Please visit the Innovation SOI laboratory to collect your component.
+          </p>
+          <p style="color: #334155; font-size: 14px; line-height: 1.6; background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 10px; border-radius: 4px;">
+            Your official transaction receipt PDF is attached to this email.
+          </p>
+
+          <p style="color: #64748b; font-size: 11px; text-align: center; margin-bottom: 0; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 25px;">
+            This is an automated institutional transaction update. Please do not reply directly to this email.
+          </p>
+        </div>
+        """
+        attachment = None
+        if pdf_base64:
+            attachment = [
+                {
+                    "name": f"EIHUB_Student_Receipt_{req_code}.pdf",
+                    "content": pdf_base64
+                }
+            ]
+        await EMAIL_QUEUE.put((student_email, f"EI HUB - Borrowing Request Approved ({req_code})", html, attachment))
         
     await REQUESTS_CACHE.clear()
     await COMPONENTS_CACHE.clear()
@@ -1255,6 +1428,53 @@ async def reject_request(id: str, data: dict = Body(...), user: dict = Depends(g
         "link_url": "/student/requests",
         "created_at": created_at_iso
     })
+
+    # Dispatch rejection email asynchronously using email queue
+    student_email = req.get("student_email")
+    if student_email:
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+          <div style="text-align: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
+            <span style="font-size: 18px; font-weight: 800; color: #1e1b4b; letter-spacing: 1px;">EI HUB | KITE</span>
+            <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0;">Department of Electronics & Communication Engineering</p>
+          </div>
+          
+          <div style="margin-bottom: 25px;">
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b;">Transaction Status</span>
+            <div style="font-size: 18px; font-weight: 700; color: #ef4444; margin-top: 2px;">Rejected</div>
+          </div>
+
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; margin-bottom: 20px; font-size: 13px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+              <tr>
+                <td style="color: #64748b; padding: 4px 0; width: 120px;">Request Code:</td>
+                <td style="color: #1e1b4b; font-weight: bold; padding: 4px 0; font-family: monospace;">{req_code}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 4px 0;">Component:</td>
+                <td style="color: #1e1b4b; font-weight: bold; padding: 4px 0;">{req["component_name"]}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; padding: 4px 0;">Quantity:</td>
+                <td style="color: #1e1b4b; font-weight: bold; padding: 4px 0;">{req["quantity"]} Units</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+            Your component borrowing request was unfortunately rejected by our laboratory supervisors.
+          </p>
+          <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px; border-radius: 4px; margin: 15px 0;">
+            <p style="color: #991b1b; font-size: 13px; font-weight: bold; margin: 0 0 5px 0;">Rejection Reason:</p>
+            <p style="color: #7f1d1d; font-size: 13px; margin: 0; font-style: italic;">"{reason}"</p>
+          </div>
+
+          <p style="color: #64748b; font-size: 11px; text-align: center; margin-bottom: 0; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 25px;">
+            This is an automated institutional transaction update. Please do not reply directly to this email.
+          </p>
+        </div>
+        """
+        await EMAIL_QUEUE.put((student_email, f"EI HUB - Borrowing Request Rejected ({req_code})", html, None))
         
     await REQUESTS_CACHE.clear()
     return {"id": id, "status": "rejected"}
@@ -1447,6 +1667,33 @@ async def process_return(id: str, data: dict = Body(...), user: dict = Depends(g
 
 
 # 3. Profiles
+async def clean_or_generate_username(username: Optional[str], email: Optional[str], profile_id: Optional[str]) -> str:
+    import re
+    if username is not None and username.strip() != "":
+        username_clean = username.strip().lower()
+        if re.search(r'[A-Z]', username):
+            raise HTTPException(status_code=400, detail="Username can contain only lowercase letters, numbers, and symbols.")
+        # Check uniqueness case-insensitively
+        duplicate = await db_query("SELECT id FROM profiles WHERE LOWER(username) = ? AND id != ?", [username_clean, profile_id or ""])
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Username is already taken.")
+        return username_clean
+    else:
+        # Generate default username using lowercase email
+        if email:
+            base_clean = email.strip().lower()
+        else:
+            base_clean = "user_" + (profile_id[:8] if profile_id else "unknown")
+            
+        candidate = base_clean
+        counter = 1
+        while True:
+            dup = await db_query("SELECT id FROM profiles WHERE LOWER(username) = ? AND id != ?", [candidate, profile_id or ""])
+            if not dup:
+                return candidate
+            candidate = f"{base_clean}_{counter}"
+            counter += 1
+
 @app.get("/api/profiles")
 async def get_profiles():
     rows = await db_query("SELECT * FROM profiles ORDER BY created_at DESC")
@@ -1457,6 +1704,8 @@ async def sync_profile(data: dict = Body(...), user: dict = Depends(get_current_
     profile_id = data.get("id")
     firebase_uid = data.get("firebase_uid")
     email = data.get("email")
+    if email and any(c.isupper() for c in email):
+        raise HTTPException(status_code=400, detail="invalid emailid/password")
     full_name = data.get("full_name", "User")
     role = data.get("role", "student")
     department = data.get("department", "ECE")
@@ -1468,6 +1717,8 @@ async def sync_profile(data: dict = Body(...), user: dict = Depends(get_current_
     institution = data.get("institution", "KITE")
     password = data.get("password")
     year_of_study = data.get("year_of_study")
+    username_raw = data.get("username")
+    username = await clean_or_generate_username(username_raw, email, profile_id)
     
     # Check if profile already exists in Turso
     existing = await db_query("SELECT id FROM profiles WHERE id = ? OR email = ?", [profile_id, email])
@@ -1475,18 +1726,18 @@ async def sync_profile(data: dict = Body(...), user: dict = Depends(get_current_
         # Update existing profile
         sql = """
             UPDATE profiles
-            SET firebase_uid = ?, full_name = ?, role = ?, department = ?, phone = ?, register_number = ?, avatar_url = ?, faculty_id = ?, roll_number = ?, institution = ?, password = COALESCE(?, password), year_of_study = COALESCE(?, year_of_study), updated_at = datetime('now')
+            SET firebase_uid = ?, full_name = ?, role = ?, department = ?, phone = ?, register_number = ?, avatar_url = ?, faculty_id = ?, roll_number = ?, institution = ?, password = COALESCE(?, password), year_of_study = COALESCE(?, year_of_study), username = ?, updated_at = datetime('now')
             WHERE id = ?
         """
-        await db_execute(sql, [firebase_uid, full_name, role, department, phone, register_number, avatar_url, faculty_id, roll_number, institution, password, year_of_study, existing[0]["id"]])
+        await db_execute(sql, [firebase_uid, full_name, role, department, phone, register_number, avatar_url, faculty_id, roll_number, institution, password, year_of_study, username, existing[0]["id"]])
         profile_id = existing[0]["id"]
     else:
         # Insert new profile
         sql = """
-            INSERT INTO profiles (id, firebase_uid, email, full_name, role, department, phone, register_number, avatar_url, created_at, updated_at, is_active, faculty_id, roll_number, institution, password, year_of_study)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1, ?, ?, ?, ?, ?)
+            INSERT INTO profiles (id, firebase_uid, email, full_name, role, department, phone, register_number, avatar_url, created_at, updated_at, is_active, faculty_id, roll_number, institution, password, year_of_study, username)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1, ?, ?, ?, ?, ?, ?)
         """
-        await db_execute(sql, [profile_id, firebase_uid, email, full_name, role, department, phone, register_number, avatar_url, faculty_id, roll_number, institution, password, year_of_study])
+        await db_execute(sql, [profile_id, firebase_uid, email, full_name, role, department, phone, register_number, avatar_url, faculty_id, roll_number, institution, password, year_of_study, username])
         
         # Log activity
         await log_activity(profile_id, full_name, "SYNC_PROFILE", "PROFILE", profile_id, {"email": email, "role": role})
@@ -1512,6 +1763,10 @@ async def update_profile(id: str, data: dict = Body(...), user: dict = Depends(g
     roll_number = data.get("roll_number")
     institution = data.get("institution")
     year_of_study = data.get("year_of_study")
+    username_raw = data.get("username")
+    
+    if email and any(c.isupper() for c in email):
+        raise HTTPException(status_code=400, detail="invalid emailid/password")
     
     # Fetch current profile to compile SQL dynamically
     current = await db_query("SELECT * FROM profiles WHERE id = ?", [id])
@@ -1520,10 +1775,15 @@ async def update_profile(id: str, data: dict = Body(...), user: dict = Depends(g
         
     c = current[0]
     
+    if username_raw is not None:
+        username_clean = await clean_or_generate_username(username_raw, c.get("email") or email, id)
+    else:
+        username_clean = c.get("username")
+    
     sql = """
         UPDATE profiles
         SET full_name = ?, department = ?, phone = ?, register_number = ?, avatar_url = ?, is_active = ?, role = ?,
-            email = ?, faculty_id = ?, roll_number = ?, institution = ?, year_of_study = ?, updated_at = datetime('now')
+            email = ?, faculty_id = ?, roll_number = ?, institution = ?, year_of_study = ?, username = ?, updated_at = datetime('now')
         WHERE id = ?
     """
     await db_execute(sql, [
@@ -1539,6 +1799,7 @@ async def update_profile(id: str, data: dict = Body(...), user: dict = Depends(g
         roll_number or c["roll_number"],
         institution or c["institution"],
         year_of_study or c["year_of_study"],
+        username_clean,
         id
     ])
     

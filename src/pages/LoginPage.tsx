@@ -10,6 +10,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, getAuth } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { sendBrevoOtp } from '../utils/brevoService';
+import { EMAIL_REGEX, LOWERCASE_EMAIL_ERROR, hasUppercase, validateEmail } from '../utils/emailValidation';
 import { 
   Sparkles, 
   GraduationCap, 
@@ -43,22 +44,36 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  
+  const isLoginEmailInvalid = !validateEmail(email).isValid;
   const [isLoading, setIsLoading] = useState(false);
   const [googleError, setGoogleError] = useState('');
   const [loginError, setLoginError] = useState('');
 
   // Student Registration Form State
   const [regFullName, setRegFullName] = useState('');
+  const [regUsername, setRegUsername] = useState('');
   const [regInstitution, setRegInstitution] = useState('KGISL Institute of Technology');
   const [regDepartment, setRegDepartment] = useState('Electronics & Instrumentation Engineering (EIE)');
   const [regYear, setRegYear] = useState('3rd Year');
   const [regEmail, setRegEmail] = useState('');
+  const isRegEmailInvalid = !validateEmail(regEmail).isValid;
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
   const [regRegisterNumber, setRegRegisterNumber] = useState('');
   const [regRollNumber, setRegRollNumber] = useState('');
+  const [regEmailError, setRegEmailError] = useState('');
+  const isRegFormInvalid =
+    !regFullName.trim() ||
+    isRegEmailInvalid ||
+    !regPassword ||
+    regPassword.length < 6 ||
+    regPassword !== regConfirmPassword ||
+    regPhone.length !== 10 ||
+    regRegisterNumber.trim().length < 4 ||
+    /[A-Z]/.test(regUsername);
 
   // OTP Verification Modal State
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -81,14 +96,16 @@ export const LoginPage: React.FC = () => {
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      toast.error('Please enter email and password');
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      setLoginError(emailValidation.error);
       return;
     }
-
-    const isBrevoOwner = email.toLowerCase() === 'eihubsoi@gmail.com';
-    if (!email.toLowerCase().endsWith('@kgkite.ac.in') && !isBrevoOwner) {
-      toast.error('use only @kgkite.ac.in mail id');
+    if (!password) {
+      toast.error('Password cannot be empty.');
+      return;
+    }
+    if (isLoginEmailInvalid || isLoading) {
       return;
     }
 
@@ -121,9 +138,11 @@ export const LoginPage: React.FC = () => {
       else if (targetRole === 'faculty') navigate('/faculty/dashboard');
       else navigate('/admin/dashboard');
     } catch (err: any) {
-      toast.error(err.message || 'Google Sign-In failed');
-      if (err.message?.includes('use only @kgkite.ac.in')) {
-        setGoogleError('use only @kgkite.ac.in');
+      if (err.message?.includes('use only @kgkite.ac.in') || err.message?.includes('uppercase') || err.message?.includes('Email ID must contain only lowercase letters')) {
+        toast.error(err.message);
+        setGoogleError(err.message);
+      } else {
+        toast.error('Google Sign-In failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -132,13 +151,16 @@ export const LoginPage: React.FC = () => {
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regFullName.trim() || !regEmail.trim() || !regPassword.trim() || !regPhone.trim()) {
-      toast.error('Please fill in all required fields');
+    const regEmailValidation = validateEmail(regEmail);
+    if (!regEmailValidation.isValid) {
+      toast.error(regEmailValidation.error);
       return;
     }
-    const isBrevoOwner = regEmail.toLowerCase() === 'eihubsoi@gmail.com';
-    if (!regEmail.toLowerCase().endsWith('@kgkite.ac.in') && !isBrevoOwner) {
-      toast.error('use only @kgkite.ac.in mail id');
+    if (/[A-Z]/.test(regUsername)) {
+      toast.error('Username can contain only lowercase letters, numbers, and symbols.');
+      return;
+    }
+    if (isRegFormInvalid || isLoading) {
       return;
     }
     if (regRegisterNumber.trim().length < 4) {
@@ -185,9 +207,26 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
+    // Perform validation check again!
+    const emailValidation = validateEmail(regEmail);
+    if (!emailValidation.isValid) {
+      toast.error(emailValidation.error);
+      return;
+    }
+    if (!regPassword || regPassword.length < 6) {
+      toast.error('Password must be at least 6 characters long.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       if (isFirebaseConfigured && firebaseAuth) {
+        const finalEmailCheck = validateEmail(regEmail);
+        if (!finalEmailCheck.isValid) {
+          toast.error(finalEmailCheck.error);
+          setIsLoading(false);
+          return;
+        }
         // Sign up with Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(firebaseAuth, regEmail, regPassword);
         if (userCredential.user) {
@@ -199,7 +238,7 @@ export const LoginPage: React.FC = () => {
               await setDoc(doc(firestoreDb, 'profiles', profileId), {
                 id: profileId,
                 firebase_uid: userCredential.user.uid,
-                email: regEmail.toLowerCase(),
+                email: regEmail,
                 full_name: regFullName,
                 role: 'student',
                 department: regDepartment,
@@ -209,7 +248,8 @@ export const LoginPage: React.FC = () => {
                 institution: regInstitution,
                 is_active: true,
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                username: regUsername
               });
               console.log('[LoginPage] Successfully saved profile to Firebase Firestore');
             } catch (firestoreErr) {
@@ -239,7 +279,7 @@ export const LoginPage: React.FC = () => {
               .insert({
                 id: profileId,
                 firebase_uid: userCredential.user.uid,
-                email: regEmail.toLowerCase(),
+                email: regEmail,
                 full_name: regFullName,
                 role: 'student',
                 department: regDepartment,
@@ -249,6 +289,7 @@ export const LoginPage: React.FC = () => {
                 institution: regInstitution,
                 password: regPassword,
                 year_of_study: regYear,
+                username: regUsername
               });
             if (profileError) {
               console.error('Error inserting profiles record directly in Turso:', profileError);
@@ -282,7 +323,7 @@ export const LoginPage: React.FC = () => {
             .from('profiles')
             .insert({
               id: authData.user.id,
-              email: regEmail.toLowerCase(),
+              email: regEmail,
               full_name: regFullName,
               role: 'student',
               department: regDepartment,
@@ -292,6 +333,7 @@ export const LoginPage: React.FC = () => {
               institution: regInstitution,
               password: regPassword,
               year_of_study: regYear,
+              username: regUsername,
             });
           if (profileError) {
             console.error('Error inserting profiles record directly:', profileError);
@@ -310,11 +352,12 @@ export const LoginPage: React.FC = () => {
           roll_number: regRollNumber,
           phone: regPhone,
           is_active: true,
+          username: regUsername,
         });
 
         // Store registration password in localStorage credentials registry
         const credentials = JSON.parse(localStorage.getItem('ei_hub_mock_credentials') || '{}');
-        credentials[regEmail.toLowerCase()] = regPassword;
+        credentials[regEmail] = regPassword;
         localStorage.setItem('ei_hub_mock_credentials', JSON.stringify(credentials));
       }
 
@@ -324,9 +367,7 @@ export const LoginPage: React.FC = () => {
       navigate('/student/dashboard');
     } catch (err: any) {
       console.error('Registration error:', err);
-      const errCode = err.code || (err.firebaseError && err.firebaseError.code) || '';
-      const errMsg = err.message || 'Registration failed';
-      toast.error(errCode ? `Error (${errCode}): ${errMsg}` : errMsg);
+      toast.error('Registration failed. Please check your credentials and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -501,11 +542,40 @@ export const LoginPage: React.FC = () => {
                       type="text"
                       value={email}
                       onChange={(e) => {
-                        setEmail(e.target.value);
+                        const val = e.target.value;
+                        setEmail(val);
                         setGoogleError('');
-                        setLoginError('');
+                        const emailValidation = validateEmail(val);
+                        if (!emailValidation.isValid) {
+                          setLoginError(emailValidation.error);
+                        } else {
+                          setLoginError('');
+                        }
                       }}
-                      placeholder={activeTab === 'student' ? 'studentname@kgkite.ac.in' : activeTab === 'faculty' ? 'Facultyname@kgkite.ac.in' : 'Adminname@kgkite.ac.in'}
+                      onBlur={() => {
+                        const emailValidation = validateEmail(email);
+                        if (!emailValidation.isValid) {
+                          setLoginError(emailValidation.error);
+                        } else {
+                          setLoginError('');
+                        }
+                      }}
+                      onPaste={() => {
+                        setTimeout(() => {
+                          const emailValidation = validateEmail(email);
+                          if (!emailValidation.isValid) {
+                            setLoginError(emailValidation.error);
+                          } else {
+                            setLoginError('');
+                          }
+                        }, 0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (isLoginEmailInvalid || !password)) {
+                          e.preventDefault();
+                        }
+                      }}
+                      placeholder={activeTab === 'student' ? 'studentname@kgkite.ac.in' : activeTab === 'faculty' ? 'facultyname@kgkite.ac.in' : 'adminname@kgkite.ac.in'}
                       className="w-full pl-10 pr-4 py-2.5 rounded-2xl glass-input text-white text-xs font-medium"
                       required
                     />
@@ -522,6 +592,11 @@ export const LoginPage: React.FC = () => {
                       onChange={(e) => {
                         setPassword(e.target.value);
                         setLoginError('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (isLoginEmailInvalid || !password)) {
+                          e.preventDefault();
+                        }
                       }}
                       placeholder="••••••••••••"
                       className="w-full pl-10 pr-10 py-2.5 rounded-2xl glass-input text-white text-xs font-medium"
@@ -549,8 +624,8 @@ export const LoginPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+                  disabled={isLoading || isLoginEmailInvalid || !password}
+                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span>{isLoading ? 'Signing In...' : `Sign In to ${activeTab.toUpperCase()} Portal`}</span>
                   <ArrowRight className="w-4 h-4" />
@@ -585,6 +660,11 @@ export const LoginPage: React.FC = () => {
                         type="text"
                         value={regFullName}
                         onChange={(e) => setRegFullName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         placeholder="E.g. Aravind R"
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
@@ -600,8 +680,30 @@ export const LoginPage: React.FC = () => {
                         type="text"
                         value={regInstitution}
                         onChange={(e) => setRegInstitution(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Username */}
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Username</label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={regEmail}
+                        className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-slate-400 font-medium bg-slate-950/40 select-none cursor-not-allowed"
+                        placeholder="aravind_r@kgkite.ac.in"
+                        readOnly
                       />
                     </div>
                   </div>
@@ -654,13 +756,47 @@ export const LoginPage: React.FC = () => {
                         type="email"
                         value={regEmail}
                         onChange={(e) => {
-                          setRegEmail(e.target.value);
+                          const val = e.target.value;
+                          setRegEmail(val);
+                          setRegUsername(val);
+                          const regEmailValidation = validateEmail(val);
+                          if (!regEmailValidation.isValid) {
+                            setRegEmailError(regEmailValidation.error);
+                          } else {
+                            setRegEmailError('');
+                          }
                           setGoogleError('');
+                        }}
+                        onBlur={() => {
+                          const regEmailValidation = validateEmail(regEmail);
+                          if (!regEmailValidation.isValid) {
+                            setRegEmailError(regEmailValidation.error);
+                          } else {
+                            setRegEmailError('');
+                          }
+                        }}
+                        onPaste={() => {
+                          setTimeout(() => {
+                            const regEmailValidation = validateEmail(regEmail);
+                            if (!regEmailValidation.isValid) {
+                              setRegEmailError(regEmailValidation.error);
+                            } else {
+                              setRegEmailError('');
+                            }
+                          }, 0);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
                         }}
                         placeholder="studentname@kgkite.ac.in"
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
                       />
+                      {regEmailError && (
+                        <p className="text-rose-400 text-[10px] mt-1 font-bold">{regEmailError}</p>
+                      )}
                     </div>
                   </div>
 
@@ -672,6 +808,11 @@ export const LoginPage: React.FC = () => {
                         type="tel"
                         value={regPhone}
                         onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         placeholder="9876543210"
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
@@ -691,6 +832,11 @@ export const LoginPage: React.FC = () => {
                         maxLength={15}
                         value={regRegisterNumber}
                         onChange={(e) => setRegRegisterNumber(e.target.value.toUpperCase().slice(0, 15))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         placeholder="E.g. 711721106001"
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
@@ -707,6 +853,11 @@ export const LoginPage: React.FC = () => {
                         maxLength={10}
                         value={regRollNumber}
                         onChange={(e) => setRegRollNumber(e.target.value.toUpperCase().slice(0, 10))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         placeholder="E.g. 21EC005"
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
@@ -725,6 +876,11 @@ export const LoginPage: React.FC = () => {
                         type={showRegPassword ? 'text' : 'password'}
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         placeholder="••••••••"
                         className="w-full pl-9 pr-8 py-2 rounded-xl glass-input text-white font-medium"
                         required
@@ -747,6 +903,11 @@ export const LoginPage: React.FC = () => {
                         type={showRegPassword ? 'text' : 'password'}
                         value={regConfirmPassword}
                         onChange={(e) => setRegConfirmPassword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isRegFormInvalid) {
+                            e.preventDefault();
+                          }
+                        }}
                         placeholder="••••••••"
                         className="w-full pl-9 pr-3 py-2 rounded-xl glass-input text-white font-medium"
                         required
@@ -757,7 +918,8 @@ export const LoginPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all hover:scale-[1.02] mt-2"
+                  disabled={isLoading || isRegFormInvalid}
+                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all hover:scale-[1.02] mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span>Register & Send Verification OTP</span>
                   <ArrowRight className="w-4 h-4" />

@@ -6,36 +6,29 @@ import { toast } from 'sonner';
 import { Mail, ArrowLeft, KeyRound, CheckCircle, RefreshCw } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth as firebaseAuth, isFirebaseConfigured, firebaseConfig } from '../firebase/client';
+import { validateEmail } from '../utils/emailValidation';
 
 export const ForgotPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const isEmailInvalid = !validateEmail(email).isValid;
 
 
   const handleSendLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    const normalizedEmail = email.toLowerCase().trim();
-    if (!normalizedEmail) {
-      toast.error('Please enter your Email ID.');
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      toast.error(emailValidation.error);
+      return;
+    }
+    if (isEmailInvalid || isLoading) {
       return;
     }
 
-    // Email format validation check
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      toast.error('Please enter a valid email address format.');
-      return;
-    }
-
-    // Institutional domain constraint
-    const isBrevoOwner = normalizedEmail === 'eihubsoi@gmail.com';
-    if (!normalizedEmail.endsWith('@kgkite.ac.in') && !isBrevoOwner) {
-      toast.error('Please use only your authorized @kgkite.ac.in email ID.');
-      return;
-    }
-
+    const normalizedEmail = email;
     setIsLoading(true);
     try {
       if (!isTursoConfigured) {
@@ -130,20 +123,55 @@ export const ForgotPasswordPage: React.FC = () => {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEmail(val);
+                    const emailValidation = validateEmail(val);
+                    if (!emailValidation.isValid) {
+                      setEmailError(emailValidation.error);
+                    } else {
+                      setEmailError('');
+                    }
+                  }}
+                  onBlur={() => {
+                    const emailValidation = validateEmail(email);
+                    if (!emailValidation.isValid) {
+                      setEmailError(emailValidation.error);
+                    } else {
+                      setEmailError('');
+                    }
+                  }}
+                  onPaste={(e) => {
+                    setTimeout(() => {
+                      const emailValidation = validateEmail(email);
+                      if (!emailValidation.isValid) {
+                        setEmailError(emailValidation.error);
+                      } else {
+                        setEmailError('');
+                      }
+                    }, 0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && isEmailInvalid) {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="yourname@kgkite.ac.in"
                   className="w-full pl-10 pr-4 py-2.5 rounded-2xl glass-input text-white text-xs font-medium"
                   required
                   disabled={isLoading}
                   autoFocus
                 />
+                {emailError && (
+                  <p className="text-rose-400 text-[10px] mt-1 font-bold">{emailError}</p>
+                )}
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all hover:scale-[1.02] disabled:opacity-50"
+              disabled={isLoading || isEmailInvalid}
+              className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-indigo-glow flex items-center justify-center gap-2 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>

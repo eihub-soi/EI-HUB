@@ -23,6 +23,7 @@ export interface Profile {
   firebase_uid?: string;
   created_at: string;
   updated_at: string;
+  username?: string;
 }
 
 export interface ComponentItem {

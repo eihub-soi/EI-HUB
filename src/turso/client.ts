@@ -407,10 +407,13 @@ export const turso = {
     },
 
     async signInWithPassword({ email, password }: any) {
+      if (/[A-Z]/.test(email)) {
+        return { data: null, error: { message: 'invalid emailid/password' } };
+      }
       try {
         const res = await client.execute({
           sql: 'SELECT * FROM _auth_users WHERE email = ? AND password = ?',
-          args: [email.toLowerCase(), password]
+          args: [email, password]
         });
 
         if (res.rows.length === 0) {
@@ -436,10 +439,13 @@ export const turso = {
     },
 
     async signUp({ email, password }: any) {
+      if (/[A-Z]/.test(email)) {
+        return { data: null, error: { message: 'invalid emailid/password' } };
+      }
       try {
         const existing = await client.execute({
           sql: 'SELECT id FROM _auth_users WHERE email = ?',
-          args: [email.toLowerCase()]
+          args: [email]
         });
 
         if (existing.rows.length > 0) {
@@ -449,7 +455,7 @@ export const turso = {
         const id = crypto.randomUUID();
         await client.execute({
           sql: 'INSERT INTO _auth_users (id, email, password) VALUES (?, ?, ?)',
-          args: [id, email.toLowerCase(), password]
+          args: [id, email, password]
         });
 
         const session = {
@@ -470,14 +476,17 @@ export const turso = {
       if (!email || typeof email !== 'string') {
         return { error: { message: 'Cannot reset password: email is undefined or invalid' } };
       }
+      if (/[A-Z]/.test(email)) {
+        return { error: { message: 'invalid emailid/password' } };
+      }
       try {
         await client.execute({
           sql: 'UPDATE _auth_users SET password = ? WHERE email = ?',
-          args: [newPassword, email.toLowerCase()]
+          args: [newPassword, email]
         });
         await client.execute({
           sql: 'UPDATE profiles SET password = ? WHERE email = ?',
-          args: [newPassword, email.toLowerCase()]
+          args: [newPassword, email]
         });
         return { error: null };
       } catch (err: any) {

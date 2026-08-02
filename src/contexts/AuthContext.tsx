@@ -6,6 +6,7 @@ import { auth as firebaseAuth, db as firestoreDb, isFirebaseConfigured } from '.
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { apiRequest } from '../utils/api';
+import { validateEmail } from '../utils/emailValidation';
 
 interface AuthContextType {
   user: Profile | null;
@@ -56,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
         try {
           if (fbUser) {
-            if (fbUser.email && !fbUser.email.toLowerCase().endsWith('@kgkite.ac.in') && fbUser.email.toLowerCase() !== 'eihubsoi@gmail.com') {
+            if (fbUser.email && !validateEmail(fbUser.email).isValid) {
               try {
                 await fbUser.delete();
               } catch (e) {
@@ -78,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Local fallback if FastAPI query failed
             if (!profile) {
               const localProfiles = mockEngine.getProfiles();
-              profile = localProfiles.find(p => p.id === fbUser.uid || (p as any).firebase_uid === fbUser.uid || (fbUser.email && p.email && p.email.toLowerCase() === fbUser.email.toLowerCase())) || null;
+              profile = localProfiles.find(p => p.id === fbUser.uid || (p as any).firebase_uid === fbUser.uid || (fbUser.email && p.email && p.email === fbUser.email)) || null;
             }
 
             if (profile) {
@@ -172,10 +173,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithEmail = async (email: string, password: string, role: UserRole) => {
     setIsLoading(true);
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      setIsLoading(false);
+      throw new Error(emailValidation.error);
+    }
+    if (!password) {
+      setIsLoading(false);
+      throw new Error('Password cannot be empty.');
+    }
     try {
       // 1. Try Firebase Authentication (Primary & Exclusive when active)
       if (isFirebaseConfigured && firebaseAuth) {
         console.log('[AuthContext] Attempting login via Firebase Auth (Exclusive Provider)...');
+        const finalEmailCheck = validateEmail(email);
+        if (!finalEmailCheck.isValid) {
+          throw new Error(finalEmailCheck.error);
+        }
         const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
         if (userCredential.user) {
           let profile = null;
@@ -188,60 +202,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (!profile) {
             const localProfiles = mockEngine.getProfiles();
-            profile = localProfiles.find(p => p.id === userCredential.user.uid || (p as any).firebase_uid === userCredential.user.uid || (userCredential.user.email && p.email && p.email.toLowerCase() === userCredential.user.email.toLowerCase())) || null;
+            profile = localProfiles.find(p => p.id === userCredential.user.uid || (p as any).firebase_uid === userCredential.user.uid || (userCredential.user.email && p.email && p.email === userCredential.user.email)) || null;
           }
 
           if (!profile) {
-            const emailLower = email.toLowerCase();
+            const emailLower = email;
             let newRole: UserRole = 'student';
             let fullName = 'User';
             let dept = 'Electronics & Communication Engineering';
             
             if (emailLower === 'faculty-01@kgkite.ac.in') {
-              newRole = 'faculty';
-              fullName = 'Faculty Coordinator';
+               newRole = 'faculty';
+               fullName = 'Faculty Coordinator';
             } else if (emailLower === 'admin-02@kgkite.ac.in') {
-              newRole = 'admin';
-              fullName = 'System Administrator';
-              dept = 'System Administration';
+               newRole = 'admin';
+               fullName = 'System Administrator';
+               dept = 'System Administration';
             }
             
             const newId = crypto.randomUUID();
             
             try {
-              profile = await apiRequest('/api/profiles/sync', {
-                method: 'POST',
-                body: JSON.stringify({
-                  id: newId,
-                  firebase_uid: userCredential.user.uid,
-                  email: userCredential.user.email || email.toLowerCase(),
-                  full_name: fullName,
-                  role: newRole,
-                  department: dept,
-                  phone: '+91 98765 43210',
-                  register_number: newRole === 'student' ? `7117${Math.floor(21100000 + Math.random() * 900000)}` : null,
-                  password: password,
-                })
-              });
+               profile = await apiRequest('/api/profiles/sync', {
+                 method: 'POST',
+                 body: JSON.stringify({
+                   id: newId,
+                   firebase_uid: userCredential.user.uid,
+                   email: userCredential.user.email || email,
+                   full_name: fullName,
+                   role: newRole,
+                   department: dept,
+                   phone: '+91 98765 43210',
+                   register_number: newRole === 'student' ? `7117${Math.floor(21100000 + Math.random() * 900000)}` : null,
+                   password: password,
+                   username: userCredential.user.email || email,
+                 })
+               });
             } catch (err) {
-              console.error('[AuthContext] Error syncing profile with FastAPI backend during email login:', err);
+               console.error('[AuthContext] Error syncing profile with FastAPI backend during email login:', err);
             }
 
             if (!profile) {
-              const localProfiles = mockEngine.getProfiles();
-              const newLocalProfile = {
-                id: newId,
-                firebase_uid: userCredential.user.uid,
-                email: userCredential.user.email || email.toLowerCase(),
-                full_name: fullName,
-                role: newRole,
-                department: dept,
-                phone: '+91 98765 43210',
-                register_number: newRole === 'student' ? `7117${Math.floor(21100000 + Math.random() * 900000)}` : null,
-                is_active: true,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              } as Profile;
+               const localProfiles = mockEngine.getProfiles();
+               const newLocalProfile = {
+                 id: newId,
+                 firebase_uid: userCredential.user.uid,
+                 email: userCredential.user.email || email,
+                 full_name: fullName,
+                 role: newRole,
+                 department: dept,
+                 phone: '+91 98765 43210',
+                 register_number: newRole === 'student' ? `7117${Math.floor(21100000 + Math.random() * 900000)}` : null,
+                 is_active: true,
+                 created_at: new Date().toISOString(),
+                 updated_at: new Date().toISOString(),
+                 username: userCredential.user.email || email,
+               } as Profile;
               localProfiles.push(newLocalProfile);
               localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(localProfiles));
               profile = newLocalProfile;
@@ -303,7 +319,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!credentials['faculty-01@kgkite.ac.in']) credentials['faculty-01@kgkite.ac.in'] = '24faculty@71';
         if (!credentials['admin-02@kgkite.ac.in']) credentials['admin-02@kgkite.ac.in'] = '24admin@71';
 
-        const correctPassword = credentials[email.toLowerCase()];
+        const correctPassword = credentials[email];
         if (!correctPassword) {
           throw new Error('Invalid email address. Account not registered.');
         }
@@ -313,7 +329,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         const currentProfiles = mockEngine.getProfiles();
-        const found = currentProfiles.find((p) => p.email && typeof p.email === 'string' && p.email.toLowerCase() === email.toLowerCase());
+        const found = currentProfiles.find((p) => p.email && typeof p.email === 'string' && p.email === email);
         if (!found) {
           throw new Error('Profile details not found in registry.');
         }
@@ -348,14 +364,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userCredential = await signInWithPopup(firebaseAuth, provider);
       const user = userCredential.user;
 
-      if (!user.email?.toLowerCase().endsWith('@kgkite.ac.in')) {
-        try {
-          await user.delete();
-        } catch (e) {
-          console.error('Error deleting unauthorized Google user:', e);
+      if (user.email) {
+        const googleEmailCheck = validateEmail(user.email);
+        if (!googleEmailCheck.isValid) {
+          try {
+            await user.delete();
+          } catch (e) {
+            console.error('Error deleting unauthorized Google user:', e);
+          }
+          await firebaseSignOut(firebaseAuth);
+          throw new Error(googleEmailCheck.error);
         }
-        await firebaseSignOut(firebaseAuth);
-        throw new Error('use only @kgkite.ac.in mail id');
       }
 
       // Retrieve the profile from FastAPI / Fallback
@@ -369,7 +388,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!profile) {
         const localProfiles = mockEngine.getProfiles();
-        profile = localProfiles.find(p => p.id === user.uid || (p as any).firebase_uid === user.uid || (user.email && p.email && p.email.toLowerCase() === user.email.toLowerCase())) || null;
+        profile = localProfiles.find(p => p.id === user.uid || (p as any).firebase_uid === user.uid || (user.email && p.email && p.email === user.email)) || null;
       }
 
       if (profile && profile.role !== 'student') {
@@ -387,7 +406,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await setDoc(doc(firestoreDb, 'profiles', newProfileId), {
               id: newProfileId,
               firebase_uid: user.uid,
-              email: user.email?.toLowerCase(),
+              email: user.email || undefined,
               full_name: user.displayName || 'Google User',
               role: 'student',
               department: 'Electronics & Communication Engineering',
@@ -416,6 +435,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               department: 'Electronics & Communication Engineering',
               phone: user.phoneNumber || '',
               register_number: `7117${Math.floor(21100000 + Math.random() * 900000)}`,
+              username: user.email?.toLowerCase(),
             })
           });
         } catch (err) {
@@ -427,7 +447,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const newLocalProfile = {
             id: newProfileId,
             firebase_uid: user.uid,
-            email: user.email?.toLowerCase() || '',
+            email: user.email || '',
             full_name: user.displayName || 'Google User',
             role: 'student',
             department: 'Electronics & Communication Engineering',
@@ -435,7 +455,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             register_number: `7117${Math.floor(21100000 + Math.random() * 900000)}`,
             is_active: true,
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            username: user.email?.toLowerCase() || '',
           } as Profile;
           localProfiles.push(newLocalProfile);
           localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(localProfiles));

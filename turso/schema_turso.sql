@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     roll_number TEXT,
     institution TEXT,
     password TEXT,
-    year_of_study TEXT
+    year_of_study TEXT,
+    username TEXT UNIQUE
 );
 
 -- 2. Components Table (Inventory items)

@@ -4,7 +4,7 @@ import { turso, isTursoConfigured } from '../../turso/client';
 import { mockEngine } from '../../services/mockEngine';
 import { isFirebaseConfigured } from '../../firebase/client';
 import { Avatar } from '../../components/common/Avatar';
-import { Mail, GraduationCap, ShieldCheck, Phone, Edit2, Check, X, ShieldAlert } from 'lucide-react';
+import { Mail, GraduationCap, ShieldCheck, Phone, Edit2, Check, X, ShieldAlert, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const StudentProfile: React.FC = () => {
@@ -12,6 +12,12 @@ export const StudentProfile: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [phoneInput, setPhoneInput] = useState(user?.phone ? user.phone.replace(/\D/g, '').slice(-10) : '');
   const [isSaving, setIsSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (user) {
+      setPhoneInput(user.phone ? user.phone.replace(/\D/g, '').slice(-10) : '');
+    }
+  }, [user]);
 
   if (!user) return null;
 
@@ -141,6 +147,14 @@ export const StudentProfile: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Username - Read-Only */}
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-1">
+            <p className="text-slate-400 text-[10px] flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-indigo-400" /> Username
+            </p>
+            <p className="font-semibold text-white">{user.username || user.email}</p>
           </div>
 
           {/* Role Privilege */}

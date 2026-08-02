@@ -11,6 +11,7 @@ import { firebaseConfig, isFirebaseConfigured, db as firestoreDb } from '../../f
 import { doc, deleteDoc } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { validateEmail } from '../../utils/emailValidation';
 import { 
   Users, 
   Plus, 
@@ -56,7 +57,9 @@ export const UserManagement: React.FC = () => {
     institution: 'KGISL Institute of Technology',
     is_active: true,
     year_of_study: '3rd Year',
+    username: '',
   });
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     // 1. Initial Load of profiles from Turso database
@@ -111,6 +114,7 @@ export const UserManagement: React.FC = () => {
       institution: 'KGISL Institute of Technology',
       is_active: true,
       year_of_study: '3rd Year',
+      username: '',
     });
     setShowAddModal(true);
   };
@@ -130,29 +134,32 @@ export const UserManagement: React.FC = () => {
       institution: user.institution || 'KGISL Institute of Technology',
       is_active: user.is_active,
       year_of_study: user.year_of_study || '3rd Year',
+      username: user.username || '',
     });
     setShowAddModal(true);
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email.toLowerCase().endsWith('@kgkite.ac.in') && formData.email.toLowerCase() !== 'eihubsoi@gmail.com') {
-      toast.error('use only @kgkite.ac.in mail id');
+    const emailValidation = validateEmail(formData.email);
+    if (!emailValidation.isValid) {
+      toast.error(emailValidation.error);
       return;
     }
+    const targetUsername = formData.email.trim();
     if (!editingUser && (!formData.password || formData.password.length < 6)) {
       toast.error('Password must be at least 6 characters long');
       return;
     }
     try {
       if (editingUser) {
-        await mockEngine.updateProfile(editingUser.id, formData);
+        await mockEngine.updateProfile(editingUser.id, { ...formData, username: targetUsername });
 
         // Update profile record in Turso directly if configured on frontend
         if (isTursoConfigured) {
           try {
             await turso.from('profiles').update({
-              email: formData.email.toLowerCase(),
+              email: formData.email,
               full_name: formData.full_name,
               role: formData.role,
               department: formData.department,
@@ -162,7 +169,8 @@ export const UserManagement: React.FC = () => {
               institution: formData.institution,
               year_of_study: formData.year_of_study || null,
               faculty_id: formData.faculty_id || null,
-              is_active: formData.is_active ? 1 : 0
+              is_active: formData.is_active ? 1 : 0,
+              username: targetUsername
             }).eq('id', editingUser.id);
             console.log('[UserManagement] Successfully updated profile directly in Turso');
           } catch (tursoErr) {
@@ -183,6 +191,10 @@ export const UserManagement: React.FC = () => {
             tempApp = initializeApp(firebaseConfig, tempAppName);
             const tempAuth = getAuth(tempApp);
             
+            const finalCheck = validateEmail(formData.email);
+            if (!finalCheck.isValid) {
+              throw new Error(finalCheck.error);
+            }
             const userCredential = await createUserWithEmailAndPassword(tempAuth, formData.email, formData.password);
             if (userCredential.user) {
               firebaseUid = userCredential.user.uid;
@@ -227,7 +239,7 @@ export const UserManagement: React.FC = () => {
               .insert({
                 id: profileId,
                 firebase_uid: firebaseUid || null,
-                email: formData.email.toLowerCase(),
+                email: formData.email,
                 full_name: formData.full_name,
                 role: formData.role,
                 department: formData.department,
@@ -238,6 +250,7 @@ export const UserManagement: React.FC = () => {
                 year_of_study: formData.year_of_study || null,
                 is_active: formData.is_active ? 1 : 0,
                 password: formData.password,
+                username: targetUsername
               });
             if (profileError) {
               console.error('[UserManagement] Error inserting profile directly in Turso:', profileError);
@@ -253,6 +266,7 @@ export const UserManagement: React.FC = () => {
           id: profileId,
           firebase_uid: firebaseUid,
           avatar_url: getAvatarUrl({ role: formData.role }),
+          username: targetUsername
         }, formData.password);
         toast.success(`Created new ${formData.role} user: ${formData.full_name}`);
       }
@@ -548,15 +562,38 @@ export const UserManagement: React.FC = () => {
               </div>
 
               <div>
+                <label className="block text-slate-300 font-semibold mb-1">Username</label>
+                <input
+                  type="text"
+                  value={formData.email || ''}
+                  className="w-full px-3 py-2 rounded-xl glass-input text-slate-400 bg-slate-950/40 select-none cursor-not-allowed"
+                  placeholder="aravind_r@kgkite.ac.in"
+                  readOnly
+                />
+              </div>
+
+              <div>
                 <label className="block text-slate-300 font-semibold mb-1">Email Address</label>
                 <input
                   type="email"
                   value={formData.email || ''}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, email: val });
+                    const emailValidation = validateEmail(val);
+                    if (!emailValidation.isValid) {
+                      setEmailError(emailValidation.error || 'Please enter a valid email address format.');
+                    } else {
+                      setEmailError('');
+                    }
+                  }}
                   placeholder="user@kgisl.edu.in"
                   className="w-full px-3 py-2 rounded-xl glass-input text-white"
                   required
                 />
+                {emailError && (
+                  <p className="text-rose-400 text-[10px] mt-1 font-bold">{emailError}</p>
+                )}
               </div>
 
               <div>
@@ -717,31 +754,38 @@ export const UserManagement: React.FC = () => {
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-900/30 border border-white/5">
                   <div>
+                    <span className="text-[10px] text-slate-500 block">Username</span>
+                    <span className="font-semibold text-white">@{selectedDetailsUser.username || 'N/A'}</span>
+                  </div>
+                  <div>
                     <span className="text-[10px] text-slate-500 block">Email Address</span>
                     <span className="font-semibold text-white break-all">{selectedDetailsUser.email}</span>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-900/30 border border-white/5">
                   <div>
                     <span className="text-[10px] text-slate-500 block">Mobile Number</span>
                     <span className="font-semibold text-white">{selectedDetailsUser.phone || 'N/A'}</span>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-900/30 border border-white/5">
                   <div>
                     <span className="text-[10px] text-slate-500 block">Role Privilege</span>
                     <span className="font-semibold text-white capitalize">{selectedDetailsUser.role}</span>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Department</span>
-                    <span className="font-semibold text-white">{selectedDetailsUser.department}</span>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-900/30 border border-white/5">
                   <div>
+                    <span className="text-[10px] text-slate-500 block">Department</span>
+                    <span className="font-semibold text-white">{selectedDetailsUser.department}</span>
+                  </div>
+                  <div>
                     <span className="text-[10px] text-slate-500 block">Institution / College</span>
                     <span className="font-semibold text-white">{selectedDetailsUser.institution || 'KGISL Institute of Technology'}</span>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-900/30 border border-white/5">
                   <div>
                     <span className="text-[10px] text-slate-500 block">Status</span>
                     <span className={`font-semibold ${selectedDetailsUser.is_active ? 'text-emerald-400' : 'text-rose-400'}`}>

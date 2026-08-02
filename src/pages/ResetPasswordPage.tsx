@@ -6,6 +6,7 @@ import { firebaseConfig, auth as firebaseAuth, isFirebaseConfigured } from '../f
 import { turso, isTursoConfigured, client as tursoClient } from '../turso/client';
 import { toast } from 'sonner';
 import { KeyRound, ShieldAlert, CheckCircle, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { validateEmail } from '../utils/emailValidation';
 
 export const ResetPasswordPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -37,10 +38,17 @@ export const ResetPasswordPage: React.FC = () => {
           return;
         }
 
+        const emailValidation = validateEmail(emailParam.trim());
+        if (!emailValidation.isValid) {
+          setErrorMessage(emailValidation.error || 'Please enter a valid email address format.');
+          setIsValidating(false);
+          return;
+        }
+
         try {
           const res = await tursoClient.execute({
             sql: 'SELECT token, expires_at FROM password_resets WHERE email = ?',
-            args: [emailParam.toLowerCase().trim()]
+            args: [emailParam.trim()]
           });
 
           const row = res.rows && res.rows.length > 0 ? res.rows[0] : null;
@@ -52,7 +60,7 @@ export const ResetPasswordPage: React.FC = () => {
           } else if (new Date(row.expires_at as string) < new Date()) {
             setErrorMessage('This password reset link has expired. Please request a new link.');
           } else {
-            setEmail(emailParam.toLowerCase().trim());
+            setEmail(emailParam.trim());
           }
         } catch (err) {
           console.error('[ResetPassword] Custom token verification failed:', err);
@@ -98,6 +106,11 @@ export const ResetPasswordPage: React.FC = () => {
   // 2. Perform reset and sync
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      toast.error(emailValidation.error);
+      return;
+    }
     if (!newPassword || newPassword.length < 6) {
       toast.error('Password must be at least 6 characters long');
       return;
@@ -130,6 +143,10 @@ export const ResetPasswordPage: React.FC = () => {
 
         // Direct write / sync in Firebase Auth
         if (isFirebaseConfigured) {
+          const finalCheck = validateEmail(email);
+          if (!finalCheck.isValid) {
+            throw new Error(finalCheck.error);
+          }
           const tempAppName = `temp-auth-reset-${Date.now()}`;
           let tempApp = null;
           try {
@@ -139,6 +156,10 @@ export const ResetPasswordPage: React.FC = () => {
             if (oldPassword) {
               // Sign in and update password
               try {
+                const finalCheckInner = validateEmail(email);
+                if (!finalCheckInner.isValid) {
+                  throw new Error(finalCheckInner.error);
+                }
                 const userCredential = await signInWithEmailAndPassword(tempAuth, email, oldPassword);
                 if (userCredential.user) {
                   await updatePassword(userCredential.user, newPassword);
@@ -148,6 +169,10 @@ export const ResetPasswordPage: React.FC = () => {
                 // If login fails, provision the user directly as a fallback
                 console.warn('[ResetPassword] Temporary sign-in failed, attempting direct creation:', signInErr.message || signInErr);
                 try {
+                  const finalCheckInner2 = validateEmail(email);
+                  if (!finalCheckInner2.isValid) {
+                    throw new Error(finalCheckInner2.error);
+                  }
                   await createUserWithEmailAndPassword(tempAuth, email, newPassword);
                 } catch (createErr: any) {
                   if (createErr.code !== 'auth/email-already-in-use') {
@@ -158,6 +183,10 @@ export const ResetPasswordPage: React.FC = () => {
             } else {
               // Fallback direct provision if no old credentials stored
               try {
+                const finalCheckInner3 = validateEmail(email);
+                if (!finalCheckInner3.isValid) {
+                  throw new Error(finalCheckInner3.error);
+                }
                 await createUserWithEmailAndPassword(tempAuth, email, newPassword);
               } catch (createErr: any) {
                 if (createErr.code !== 'auth/email-already-in-use') {
@@ -211,7 +240,7 @@ export const ResetPasswordPage: React.FC = () => {
       if (email) {
         try {
           const credentials = JSON.parse(localStorage.getItem('ei_hub_mock_credentials') || '{}');
-          credentials[email.toLowerCase()] = newPassword;
+          credentials[email] = newPassword;
           localStorage.setItem('ei_hub_mock_credentials', JSON.stringify(credentials));
         } catch (e) {
           console.error('Error updating local mock credentials:', e);
