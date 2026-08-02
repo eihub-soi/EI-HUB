@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatTimestamp, formatDateOnly, parseUTCDate } from '../../utils/timestamp';
 import { BorrowRequest } from '../../types';
 import { toast } from 'sonner';
 import { 
@@ -63,17 +64,6 @@ const parsePurpose = (purposeStr: string) => {
   };
 };
 
-const formatDateDMY = (dateStr: string) => {
-  if (!dateStr) return '';
-  const dateOnly = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-  const parts = dateOnly.split('-');
-  if (parts.length === 3) {
-    if (parts[0].length === 4) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-  }
-  return dateStr;
-};
 
 export const PendingRequests: React.FC = () => {
   const { user } = useAuth();
@@ -82,7 +72,13 @@ export const PendingRequests: React.FC = () => {
   const [selectedReqForReject, setSelectedReqForReject] = useState<BorrowRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('Stock allocated for advanced research lab session');
 
-  const pendingRequests = requests.filter(
+  const sortedPending = [...requests].sort((a, b) => {
+    const dateA = parseUTCDate(a.requested_at || a.created_at).getTime();
+    const dateB = parseUTCDate(b.requested_at || b.created_at).getTime();
+    return dateB - dateA;
+  });
+
+  const pendingRequests = sortedPending.filter(
     (r) =>
       r.status === 'pending' &&
       (r.request_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -214,9 +210,9 @@ export const PendingRequests: React.FC = () => {
                       <td className="py-4 px-6 font-extrabold text-indigo-300">{req.quantity}</td>
                       <td className="py-4 px-6 text-slate-300 max-w-xs">{rowDetails.purpose || req.purpose}</td>
                       <td className="py-4 px-6 text-slate-400 text-[11px]">
-                        <div>{new Date(req.requested_at).toLocaleDateString()} {new Date(req.requested_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div>{formatTimestamp(req.requested_at)}</div>
                         <div className="text-[10px] text-indigo-300 mt-0.5 font-semibold">
-                          Period: {rowDetails.fromDate && rowDetails.toDate ? `${formatDateDMY(rowDetails.fromDate)} to ${formatDateDMY(rowDetails.toDate)}` : 'N/A'}
+                          Period: {rowDetails.fromDate && rowDetails.toDate ? `${formatDateOnly(rowDetails.fromDate)} to ${formatDateOnly(rowDetails.toDate)}` : 'N/A'}
                         </div>
                       </td>
                       <td className="py-4 px-6 text-center">

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { mockEngine } from '../services/mockEngine';
+import { formatDateOnly } from '../utils/timestamp';
 import { generateStudentReceiptPdf } from '../utils/pdfGenerator';
 import { turso, isTursoConfigured } from '../turso/client';
 import { BorrowRequest, RequestStatus } from '../types';
@@ -316,11 +317,11 @@ export const VerifyReceipt: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Issue Date</span>
-                  <span className="font-semibold text-white">{new Date(request.requested_at).toLocaleDateString()}</span>
+                  <span className="font-semibold text-white">{formatDateOnly(request.requested_at)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Expected Return</span>
-                  <span className="font-semibold text-white">{new Date(request.expected_return_at).toLocaleDateString()}</span>
+                  <span className="font-semibold text-white">{formatDateOnly(request.expected_return_at)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Authorized Issuer</span>
@@ -338,7 +339,7 @@ export const VerifyReceipt: React.FC = () => {
               {request.status === 'returned' && request.returned_at && (
                 <div className="pt-2 border-t border-white/5 flex justify-between items-center text-emerald-400">
                   <span>Actual Return Date</span>
-                  <span className="font-bold">{new Date(request.returned_at).toLocaleDateString()}</span>
+                  <span className="font-bold">{formatDateOnly(request.returned_at)}</span>
                 </div>
               )}
             </div>

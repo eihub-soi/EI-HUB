@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { UserRole } from '../../types';
 import { mockEngine } from '../../services/mockEngine';
 import { Avatar } from './Avatar';
+import { useCurrentTime } from '../../hooks/useCurrentTime';
+import { formatTimestamp, parseUTCDate, formatTimeOnly } from '../../utils/timestamp';
 import { 
   Bell, 
   Search, 
@@ -16,7 +18,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Info,
-  Menu
+  Menu,
+  Clock
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -30,8 +33,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onToggleSidebar })
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  const notifications = user ? mockEngine.getNotifications(user.id) : [];
+  const rawNotifications = user ? mockEngine.getNotifications(user.id) : [];
+  const notifications = [...rawNotifications].sort((a, b) => {
+    return parseUTCDate(b.created_at).getTime() - parseUTCDate(a.created_at).getTime();
+  });
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const currentTime = useCurrentTime();
 
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 lg:px-8 py-3 transition-all duration-300">
@@ -82,6 +89,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onToggleSidebar })
         {/* Right Section: Role Quick Switcher, Notifications, User Menu */}
         <div className="flex items-center gap-3">
           
+          {/* Real-time Clock Widget */}
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-900/60 border border-white/10 text-xs font-semibold text-slate-300 font-mono shadow-inner">
+            <Clock className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+            <span>{formatTimestamp(currentTime)}</span>
+          </div>
+
           {/* Active Role Badge (Strict Isolated Role Display) */}
           <div className="flex items-center gap-2 px-2.5 py-1.5 sm:px-3 rounded-2xl bg-slate-900/80 border border-white/10 text-xs font-bold shrink-0">
             {role === 'student' && (
@@ -148,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onToggleSidebar })
                               <p className="font-semibold text-slate-200">{n.title}</p>
                               <p className="text-slate-400 text-[11px] mt-0.5">{n.message}</p>
                               <span className="text-[10px] text-slate-500 block mt-1">
-                                {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {formatTimeOnly(n.created_at)}
                               </span>
                             </div>
                           </div>

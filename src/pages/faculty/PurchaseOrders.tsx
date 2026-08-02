@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDateOnly, parseUTCDate } from '../../utils/timestamp';
 import { PurchaseOrder, ComponentCategory } from '../../types';
 import { toast } from 'sonner';
 import { 
@@ -91,7 +92,13 @@ export const PurchaseOrders: React.FC = () => {
     }
   };
 
-  const filteredPurchases = purchases.filter(
+  const sortedPurchases = [...purchases].sort((a, b) => {
+    const dateA = parseUTCDate(a.purchased_at || a.created_at).getTime();
+    const dateB = parseUTCDate(b.purchased_at || b.created_at).getTime();
+    return dateB - dateA;
+  });
+
+  const filteredPurchases = sortedPurchases.filter(
     (p) =>
       p.po_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.supplier_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -435,7 +442,7 @@ export const PurchaseOrders: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white">{selectedDetailsPO.po_number}</h4>
-                  <p className="text-[10px] text-slate-400">Purchased at {selectedDetailsPO.purchased_at ? new Date(selectedDetailsPO.purchased_at).toLocaleDateString() : 'N/A'}</p>
+                  <p className="text-[10px] text-slate-400">Purchased at {selectedDetailsPO.purchased_at ? formatDateOnly(selectedDetailsPO.purchased_at) : 'N/A'}</p>
                 </div>
               </div>
 

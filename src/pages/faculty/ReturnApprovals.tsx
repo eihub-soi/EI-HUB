@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDateOnly, parseUTCDate } from '../../utils/timestamp';
 import { BorrowRequest } from '../../types';
 import { toast } from 'sonner';
 import { 
@@ -24,8 +25,14 @@ export const ReturnApprovals: React.FC = () => {
   const [damagedDetails, setDamagedDetails] = useState('');
   const [remarks, setRemarks] = useState('');
 
+  const sortedReturnable = [...requests].sort((a, b) => {
+    const dateA = parseUTCDate(a.return_requested_at || a.requested_at || a.created_at).getTime();
+    const dateB = parseUTCDate(b.return_requested_at || b.requested_at || b.created_at).getTime();
+    return dateB - dateA;
+  });
+
   // Filter approved or active loans ready for return processing (only those where a return has been requested by the student)
-  const returnableRequests = requests.filter(
+  const returnableRequests = sortedReturnable.filter(
     (r) =>
       (r.status === 'approved' || r.status === 'overdue') &&
       r.return_requested_at &&
@@ -121,7 +128,7 @@ export const ReturnApprovals: React.FC = () => {
                     </td>
                     <td className="py-4 px-6 font-bold text-indigo-300">{req.quantity}</td>
                     <td className="py-4 px-6 text-slate-400 text-[11px]">
-                      {new Date(req.expected_return_at).toLocaleDateString()}
+                      {formatDateOnly(req.expected_return_at)}
                     </td>
                     <td className="py-4 px-6">
                       <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">

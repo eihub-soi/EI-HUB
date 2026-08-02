@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mockEngine } from '../../services/mockEngine';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatTimestamp, formatDateOnly, parseUTCDate } from '../../utils/timestamp';
 import { BorrowRequest, RequestStatus } from '../../types';
 import { generateStudentReceiptPdf } from '../../utils/pdfGenerator';
 import { toast } from 'sonner';
@@ -69,18 +70,6 @@ const parsePurpose = (purposeStr: string) => {
   };
 };
 
-const formatDateDMY = (dateStr: string) => {
-  if (!dateStr) return '';
-  const dateOnly = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-  const parts = dateOnly.split('-');
-  if (parts.length === 3) {
-    if (parts[0].length === 4) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-  }
-  return dateStr;
-};
-
 export const MyRequests: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -90,7 +79,13 @@ export const MyRequests: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<RequestStatus | 'All'>('All');
   const [selectedReq, setSelectedReq] = useState<BorrowRequest | null>(null);
 
-  const filteredRequests = requests.filter((r) => statusFilter === 'All' || r.status === statusFilter);
+  const sortedRequests = [...requests].sort((a, b) => {
+    const dateA = parseUTCDate(a.requested_at || a.created_at).getTime();
+    const dateB = parseUTCDate(b.requested_at || b.created_at).getTime();
+    return dateB - dateA;
+  });
+
+  const filteredRequests = sortedRequests.filter((r) => statusFilter === 'All' || r.status === statusFilter);
 
   const details = selectedReq ? parsePurpose(selectedReq.purpose) : null;
 
@@ -225,9 +220,9 @@ export const MyRequests: React.FC = () => {
                       </td>
                       <td className="py-4 px-6 font-semibold text-slate-200">{req.quantity}</td>
                       <td className="py-4 px-6 text-slate-400">
-                        <div>{new Date(req.requested_at).toLocaleDateString()} {new Date(req.requested_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div>{formatTimestamp(req.requested_at)}</div>
                         <div className="text-[10px] text-indigo-300 mt-0.5 font-semibold">
-                          Period: {rowDetails.fromDate && rowDetails.toDate ? `${formatDateDMY(rowDetails.fromDate)} to ${formatDateDMY(rowDetails.toDate)}` : 'N/A'}
+                          Period: {rowDetails.fromDate && rowDetails.toDate ? `${formatDateOnly(rowDetails.fromDate)} to ${formatDateOnly(rowDetails.toDate)}` : 'N/A'}
                         </div>
                       </td>
                       <td className="py-4 px-6">{renderStatusBadge(req)}</td>
@@ -299,11 +294,11 @@ export const MyRequests: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-slate-400 text-[10px]">From Date</p>
-                  <p className="font-bold text-white">{details?.fromDate ? formatDateDMY(details.fromDate) : 'N/A'}</p>
+                  <p className="font-bold text-white">{details?.fromDate ? formatDateOnly(details.fromDate) : 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-slate-400 text-[10px]">To Date</p>
-                  <p className="font-bold text-white">{details?.toDate ? formatDateDMY(details.toDate) : 'N/A'}</p>
+                  <p className="font-bold text-white">{details?.toDate ? formatDateOnly(details.toDate) : 'N/A'}</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-slate-400 text-[10px]">Description & Hardware Notes</p>
@@ -321,7 +316,7 @@ export const MyRequests: React.FC = () => {
                   </div>
                   <div>
                     <p className="font-bold text-white">Submitted by Student</p>
-                    <p className="text-[10px] text-slate-400">{new Date(selectedReq.requested_at).toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.requested_at)}</p>
                   </div>
                 </div>
 
@@ -332,7 +327,7 @@ export const MyRequests: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-white">Approved by Faculty ({selectedReq.approved_by_name || 'Prof. Robert Chen'})</p>
-                      <p className="text-[10px] text-slate-400">{new Date(selectedReq.approved_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.approved_at)}</p>
                       {selectedReq.rejection_reason && (
                         <p className="text-[10px] text-emerald-300 mt-0.5">Remark: <span className="italic">"{selectedReq.rejection_reason}"</span></p>
                       )}
@@ -347,7 +342,7 @@ export const MyRequests: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-white">Return Requested by Student</p>
-                      <p className="text-[10px] text-slate-400">{new Date(selectedReq.return_requested_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.return_requested_at)}</p>
                       {selectedReq.return_condition && (
                         <p className="text-[10px] text-slate-300 mt-0.5">Reported Condition: <span className="text-amber-300 font-semibold">{selectedReq.return_condition}</span></p>
                       )}
@@ -365,7 +360,7 @@ export const MyRequests: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-white">Returned & Inspected ({selectedReq.return_condition})</p>
-                      <p className="text-[10px] text-slate-400">{new Date(selectedReq.returned_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.returned_at)}</p>
                       <div className="mt-1 space-y-0.5 p-2 rounded-xl bg-slate-950/60 border border-white/5 text-[10px]">
                         <p className="text-slate-400">Missing Accessories/Parts: <span className="text-rose-300 font-semibold">{selectedReq.return_missing_details || 'None'}</span></p>
                         <p className="text-slate-400">Damaged Parts/Pins: <span className="text-rose-300 font-semibold">{selectedReq.return_damaged_details || 'None'}</span></p>

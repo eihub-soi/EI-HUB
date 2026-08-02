@@ -3,12 +3,12 @@ import { INITIAL_COMPONENTS, INITIAL_PROFILES, INITIAL_REQUESTS, INITIAL_PURCHAS
 import { apiRequest } from '../utils/api';
 
 const STORAGE_KEYS = {
-  COMPONENTS: 'ei_hub_components_v1',
-  PROFILES: 'ei_hub_profiles_v1',
-  REQUESTS: 'ei_hub_requests_v1',
-  LOGS: 'ei_hub_logs_v1',
-  NOTIFS: 'ei_hub_notifications_v1',
-  PURCHASES: 'ei_hub_purchases_v1',
+  COMPONENTS: 'ei_hub_components_v2',
+  PROFILES: 'ei_hub_profiles_v2',
+  REQUESTS: 'ei_hub_requests_v2',
+  LOGS: 'ei_hub_logs_v2',
+  NOTIFS: 'ei_hub_notifications_v2',
+  PURCHASES: 'ei_hub_purchases_v2',
 };
 
 class MockEngine {

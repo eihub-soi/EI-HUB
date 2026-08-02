@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { formatDateOnly, formatTimestamp } from './timestamp';
 
 /**
  * Sends a 6-digit OTP verification email to the user using Brevo SMTP API.
@@ -79,7 +80,7 @@ export const sendBrevoAlertAndPdf = async (
     subject = `EI HUB - Return Deadline Reminder: ${request.request_code}`;
     statusColor = '#f59e0b';
     statusText = 'Return Deadline Reminder';
-    const formattedDate = request.expected_return_at ? new Date(request.expected_return_at).toLocaleDateString() : 'N/A';
+    const formattedDate = request.expected_return_at ? formatDateOnly(request.expected_return_at) : 'N/A';
     dynamicDetails = `
       <p style="color: #334155; font-size: 14px; line-height: 1.6;">
         This is a friendly reminder that the borrowing period for your lab component <strong>${request.component_name}</strong> is set to expire in <strong>3 days</strong> (expected return date: <strong>${formattedDate}</strong>).
@@ -251,9 +252,7 @@ export const sendBrevoReportEmail = async (
           <div style="font-size: 18px; font-weight: 700; color: #4338ca; margin-top: 2px;">${reportType}</div>
         </div>
 
-        <p style="color: #334155; font-size: 14px; line-height: 1.6;">
-          Please find attached the official comprehensive laboratory report PDF for <strong>${reportType}</strong>, compiled dynamically on <strong>${new Date().toLocaleString()}</strong>.
-        </p>
+          Please find attached the official comprehensive laboratory report PDF for <strong>${reportType}</strong>, compiled dynamically on <strong>${formatTimestamp(new Date())}</strong>.
 
         <p style="color: #64748b; font-size: 11px; text-align: center; margin-bottom: 0; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 25px;">
           This is an automated institutional administrative report email.
@@ -322,7 +321,7 @@ export const sendBrevoConsolidatedReminder = async (
   `;
 
   requests.forEach((req, idx) => {
-    const formattedDate = req.expected_return_at ? new Date(req.expected_return_at).toLocaleDateString() : 'N/A';
+    const formattedDate = req.expected_return_at ? formatDateOnly(req.expected_return_at) : 'N/A';
     itemsHtml += `
       <tr style="border-bottom: 1px solid #f1f5f9; ${idx % 2 === 0 ? 'background-color: #fafafa;' : ''}">
         <td style="padding: 8px; font-family: monospace; color: #4f46e5; font-weight: bold;">${req.request_code}</td>

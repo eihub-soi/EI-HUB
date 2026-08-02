@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 import { BorrowRequest, ComponentItem, SystemOverviewStats } from '../types';
+import { formatDateOnly, formatTimestamp } from './timestamp';
 
 /**
  * Generate Student Component Issuance Receipt PDF
@@ -53,9 +54,9 @@ export const generateStudentReceiptPdf = async (request: BorrowRequest, download
   doc.setFont('helvetica', 'bold');
   doc.text(`Transaction Reference: ${request.request_code}`, 20, 48);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Issue Date: ${new Date(request.requested_at).toLocaleDateString()}`, 20, 54);
-  doc.text(`Approved Date: ${request.approved_at ? new Date(request.approved_at).toLocaleDateString() : 'N/A'}`, 20, 60);
-  doc.text(`Expected Return Date: ${new Date(request.expected_return_at).toLocaleDateString()}`, 20, 66);
+  doc.text(`Issue Date: ${formatDateOnly(request.requested_at)}`, 20, 54);
+  doc.text(`Approved Date: ${request.approved_at ? formatDateOnly(request.approved_at) : 'N/A'}`, 20, 60);
+  doc.text(`Expected Return Date: ${formatDateOnly(request.expected_return_at)}`, 20, 66);
 
   doc.setFont('helvetica', 'bold');
   doc.text(`Student Name: ${request.student_name}`, 110, 48);
@@ -176,7 +177,7 @@ export const generateEnterpriseReportPdf = (
   doc.text(`REPORT TYPE: ${reportType.toUpperCase()}`, 130, 21);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Generated On: ${new Date().toLocaleString()}`, 130, 27);
+  doc.text(`Generated On: ${formatTimestamp(new Date())}`, 130, 27);
 
   // KPI Summary Metric Cards (4 Cards Grid)
   const startY = 44;

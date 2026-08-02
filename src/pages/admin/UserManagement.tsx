@@ -4,6 +4,7 @@ import { getAvatarUrl } from '../../utils/avatar';
 import { Avatar } from '../../components/common/Avatar';
 import { Profile, UserRole } from '../../types';
 import { toast } from 'sonner';
+import { formatDateOnly, formatTimestamp } from '../../utils/timestamp';
 import { turso, isTursoConfigured, client as tursoClient } from '../../turso/client';
 import { sendBrevoPasswordResetLink } from '../../utils/brevoService';
 import { firebaseConfig, isFirebaseConfigured, db as firestoreDb } from '../../firebase/client';
@@ -65,7 +66,7 @@ export const UserManagement: React.FC = () => {
           const { data, error } = await turso.from('profiles').select('*');
           if (!error && data) {
             setProfiles(data as Profile[]);
-            localStorage.setItem('ei_hub_profiles_v1', JSON.stringify(data));
+            localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(data));
           }
         } catch (e) {
           console.error('Error loading profiles from Turso:', e);
@@ -261,7 +262,7 @@ export const UserManagement: React.FC = () => {
         const { data } = await turso.from('profiles').select('*');
         if (data) {
           setProfiles(data as Profile[]);
-          localStorage.setItem('ei_hub_profiles_v1', JSON.stringify(data));
+          localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(data));
         }
       } else {
         setProfiles(mockEngine.getProfiles());
@@ -353,7 +354,7 @@ export const UserManagement: React.FC = () => {
         const { data } = await turso.from('profiles').select('*');
         if (data) {
           setProfiles(data as Profile[]);
-          localStorage.setItem('ei_hub_profiles_v1', JSON.stringify(data));
+          localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(data));
         }
       } else {
         setProfiles(mockEngine.getProfiles());
@@ -776,13 +777,13 @@ export const UserManagement: React.FC = () => {
                   <div>
                     <span className="text-slate-500 block">Joined Date</span>
                     <span className="text-slate-300 font-medium">
-                      {selectedDetailsUser.created_at ? new Date(selectedDetailsUser.created_at).toLocaleDateString() : 'N/A'}
+                      {selectedDetailsUser.created_at ? formatDateOnly(selectedDetailsUser.created_at) : 'N/A'}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-500 block">Last Updated</span>
                     <span className="text-slate-300 font-medium">
-                      {selectedDetailsUser.updated_at ? new Date(selectedDetailsUser.updated_at).toLocaleString() : 'N/A'}
+                      {selectedDetailsUser.updated_at ? formatTimestamp(selectedDetailsUser.updated_at) : 'N/A'}
                     </span>
                   </div>
                 </div>

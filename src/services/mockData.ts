@@ -1,5 +1,16 @@
 import { ComponentItem, Profile, BorrowRequest, ActivityLog, NotificationItem } from '../types';
 
+const now = new Date();
+
+// Helper to get ISO string offset by days/hours/minutes relative to current execution time
+function offsetDate(days: number, hours: number = 0, minutes: number = 0): string {
+  const d = new Date(now.getTime());
+  d.setDate(d.getDate() + days);
+  d.setHours(d.getHours() + hours);
+  d.setMinutes(d.getMinutes() + minutes);
+  return d.toISOString();
+}
+
 export const INITIAL_PROFILES: Profile[] = [
   {
     id: 'usr-faculty-01',
@@ -11,8 +22,8 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: '+91 98765 00001',
     avatar_url: '/avatars/faculty.png',
     is_active: true,
-    created_at: '2026-07-22T10:00:00Z',
-    updated_at: '2026-07-22T10:00:00Z',
+    created_at: offsetDate(-15),
+    updated_at: offsetDate(-15),
   },
   {
     id: 'usr-admin-02',
@@ -23,8 +34,8 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: '+91 98765 00002',
     avatar_url: '/avatars/admin.png',
     is_active: true,
-    created_at: '2026-07-22T10:00:00Z',
-    updated_at: '2026-07-22T10:00:00Z',
+    created_at: offsetDate(-15),
+    updated_at: offsetDate(-15),
   },
 ];
 
@@ -43,8 +54,8 @@ export const INITIAL_COMPONENTS: ComponentItem[] = [
     location_details: 'Lab A - Microcontroller Rack',
     image_url: 'https://images.unsplash.com/photo-1608564697071-ddf911d81370?w=400&auto=format&fit=crop&q=80',
     unit_cost: 18.50,
-    created_at: '2026-01-01T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    created_at: offsetDate(-60),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-2',
@@ -60,42 +71,42 @@ export const INITIAL_COMPONENTS: ComponentItem[] = [
     location_details: 'Lab A - IoT Tray',
     image_url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&auto=format&fit=crop&q=80',
     unit_cost: 9.75,
-    created_at: '2026-01-05T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    created_at: offsetDate(-60),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-3',
-    sku: 'MCU-RPI-004',
-    name: 'Raspberry Pi 4 (4GB)',
-    category: 'Microcontrollers',
-    description: 'High-performance quad-core 64-bit single-board computer with dual 4K display output.',
-    total_stock: 3,
-    available_stock: 3,
+    sku: 'SEN-ULR-004',
+    name: 'Ultrasonic Sensor HC-SR04',
+    category: 'Sensors',
+    description: 'Ultrasonic ranging module provides 2cm - 400cm non-contact measurement function with range accuracy up to 3mm.',
+    total_stock: 40,
+    available_stock: 40,
     borrowed_stock: 0,
-    cabinet: 'Lab A, Cabinet 5',
-    shelf: 'Vault 1',
-    location_details: 'Lab A - High Value Safe',
-    image_url: 'https://images.unsplash.com/photo-1629654297299-c8506221ca97?w=400&auto=format&fit=crop&q=80',
-    unit_cost: 65.00,
-    created_at: '2026-02-01T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    cabinet: 'Lab A, Cabinet 4',
+    shelf: 'Shelf 1',
+    location_details: 'Lab A - Sensors Drawer',
+    image_url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=400&auto=format&fit=crop&q=80',
+    unit_cost: 3.20,
+    created_at: offsetDate(-50),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-4',
-    sku: 'SEN-ULT-004',
-    name: 'Ultrasonic Sensor HC-SR04',
+    sku: 'SEN-PIR-008',
+    name: 'PIR Motion Sensor HC-SR501',
     category: 'Sensors',
-    description: '2cm to 400cm non-contact distance measurement module with 3mm precision.',
-    total_stock: 32,
-    available_stock: 32,
+    description: 'Pyroelectric infrared sensor detects motion based on changes in infrared radiation levels.',
+    total_stock: 15,
+    available_stock: 15,
     borrowed_stock: 0,
-    cabinet: 'Lab B',
-    shelf: 'Box 12',
-    location_details: 'Lab B - Sensors Section',
-    image_url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=400&auto=format&fit=crop&q=80',
-    unit_cost: 3.20,
-    created_at: '2026-02-10T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    cabinet: 'Lab A, Cabinet 4',
+    shelf: 'Shelf 1',
+    location_details: 'Lab A - Sensors Drawer',
+    image_url: 'https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?w=400&auto=format&fit=crop&q=80',
+    unit_cost: 2.90,
+    created_at: offsetDate(-50),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-5',
@@ -111,8 +122,8 @@ export const INITIAL_COMPONENTS: ComponentItem[] = [
     location_details: 'Lab A - Consumables Drawer',
     image_url: 'https://images.unsplash.com/photo-1555680202-c86f0e12f086?w=400&auto=format&fit=crop&q=80',
     unit_cost: 4.50,
-    created_at: '2026-01-10T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    created_at: offsetDate(-40),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-6',
@@ -128,8 +139,8 @@ export const INITIAL_COMPONENTS: ComponentItem[] = [
     location_details: 'Lab A - Power Modules',
     image_url: 'https://images.unsplash.com/photo-1517077304055-6e89abbf09b0?w=400&auto=format&fit=crop&q=80',
     unit_cost: 5.80,
-    created_at: '2026-03-01T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    created_at: offsetDate(-30),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-7',
@@ -145,8 +156,8 @@ export const INITIAL_COMPONENTS: ComponentItem[] = [
     location_details: 'Lab A - Actuators Rack',
     image_url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=400&auto=format&fit=crop&q=80',
     unit_cost: 3.90,
-    created_at: '2026-03-05T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    created_at: offsetDate(-30),
+    updated_at: offsetDate(-10),
   },
   {
     id: 'comp-8',
@@ -162,8 +173,8 @@ export const INITIAL_COMPONENTS: ComponentItem[] = [
     location_details: 'Lab B - Environmental Sensors',
     image_url: 'https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?w=400&auto=format&fit=crop&q=80',
     unit_cost: 7.40,
-    created_at: '2026-03-10T10:00:00Z',
-    updated_at: '2026-05-21T09:00:00Z',
+    created_at: offsetDate(-20),
+    updated_at: offsetDate(-10),
   },
 ];
 
@@ -184,10 +195,10 @@ export const INITIAL_REQUESTS: BorrowRequest[] = [
     status: 'approved',
     approved_by: 'usr-faculty-1',
     approved_by_name: 'Prof. Robert Chen',
-    requested_at: '2026-05-21T09:45:00Z',
-    approved_at: '2026-05-21T10:45:00Z',
-    expected_return_at: '2026-06-05T17:00:00Z',
-    created_at: '2026-05-21T09:45:00Z',
+    requested_at: offsetDate(-5, -2),
+    approved_at: offsetDate(-5, -1),
+    expected_return_at: offsetDate(10),
+    created_at: offsetDate(-5, -2),
   },
   {
     id: 'req-102',
@@ -205,10 +216,10 @@ export const INITIAL_REQUESTS: BorrowRequest[] = [
     status: 'approved',
     approved_by: 'usr-faculty-1',
     approved_by_name: 'Prof. Robert Chen',
-    requested_at: '2026-05-21T10:15:00Z',
-    approved_at: '2026-05-21T11:00:00Z',
-    expected_return_at: '2026-06-04T17:00:00Z',
-    created_at: '2026-05-21T10:15:00Z',
+    requested_at: offsetDate(-4, -3),
+    approved_at: offsetDate(-4, -2),
+    expected_return_at: offsetDate(11),
+    created_at: offsetDate(-4, -3),
   },
   {
     id: 'req-103',
@@ -224,9 +235,9 @@ export const INITIAL_REQUESTS: BorrowRequest[] = [
     quantity: 1,
     purpose: 'Autonomous Obstacle Avoidance Rover',
     status: 'pending',
-    requested_at: '2026-05-21T10:30:00Z',
-    expected_return_at: '2026-06-01T17:00:00Z',
-    created_at: '2026-05-21T10:30:00Z',
+    requested_at: offsetDate(-3),
+    expected_return_at: offsetDate(12),
+    created_at: offsetDate(-3),
   },
   {
     id: 'req-104',
@@ -244,12 +255,12 @@ export const INITIAL_REQUESTS: BorrowRequest[] = [
     status: 'returned',
     approved_by: 'usr-faculty-1',
     approved_by_name: 'Prof. Robert Chen',
-    requested_at: '2026-05-20T03:20:00Z',
-    approved_at: '2026-05-20T04:00:00Z',
-    expected_return_at: '2026-05-27T17:00:00Z',
-    returned_at: '2026-05-21T09:15:00Z',
+    requested_at: offsetDate(-7, -4),
+    approved_at: offsetDate(-7, -3),
+    expected_return_at: offsetDate(-1),
+    returned_at: offsetDate(-2),
     return_condition: 'Good Working Condition',
-    created_at: '2026-05-20T03:20:00Z',
+    created_at: offsetDate(-7, -4),
   },
 ];
 
@@ -264,7 +275,7 @@ export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
     details: { name: 'Arduino Mega 2560', sku: 'MCU-ARD-256' },
     severity: 'info',
     ip_address: '192.168.1.104',
-    created_at: '2026-05-21T11:35:00Z',
+    created_at: offsetDate(0, -1),
   },
   {
     id: 'log-2',
@@ -276,7 +287,7 @@ export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
     details: { code: 'REQ-2026-0012', student: 'Aravind R' },
     severity: 'info',
     ip_address: '192.168.1.112',
-    created_at: '2026-05-21T10:45:00Z',
+    created_at: offsetDate(-1, -2),
   },
   {
     id: 'log-3',
@@ -288,7 +299,7 @@ export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
     details: { code: 'REQ-2026-0010', component: 'Ultrasonic Sensor HC-SR04' },
     severity: 'info',
     ip_address: '192.168.1.185',
-    created_at: '2026-05-21T09:15:00Z',
+    created_at: offsetDate(-2, -3),
   },
   {
     id: 'log-4',
@@ -300,7 +311,7 @@ export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
     details: { code: 'REQ-2026-0014', component: 'ESP32 Dev Module' },
     severity: 'info',
     ip_address: '192.168.1.201',
-    created_at: '2026-05-21T09:05:00Z',
+    created_at: offsetDate(-3, -4),
   },
 ];
 
@@ -313,7 +324,7 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     type: 'success',
     is_read: false,
     link_url: '/student/requests',
-    created_at: '2026-05-21T10:45:00Z',
+    created_at: offsetDate(-1, -1),
   },
   {
     id: 'notif-2',
@@ -323,7 +334,7 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     type: 'info',
     is_read: true,
     link_url: '/student/requests',
-    created_at: '2026-05-21T09:15:00Z',
+    created_at: offsetDate(-2, -2),
   },
   {
     id: 'notif-3',
@@ -333,7 +344,7 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     type: 'warning',
     is_read: true,
     link_url: '/student/requests',
-    created_at: '2026-05-20T14:20:00Z',
+    created_at: offsetDate(-3, -3),
   },
 ];
 
@@ -354,8 +365,8 @@ export const INITIAL_PURCHASE_ORDERS = [
     cabinet: 'Lab A, Cabinet 3',
     shelf: 'Shelf 2',
     status: 'delivered' as const,
-    purchased_at: '2026-05-15T10:00:00Z',
-    created_at: '2026-05-15T10:00:00Z',
+    purchased_at: offsetDate(-10),
+    created_at: offsetDate(-10),
   },
   {
     id: 'po-102',
@@ -373,7 +384,7 @@ export const INITIAL_PURCHASE_ORDERS = [
     cabinet: 'Lab A, Cabinet 3',
     shelf: 'Shelf 2',
     status: 'delivered' as const,
-    purchased_at: '2026-05-18T14:30:00Z',
-    created_at: '2026-05-18T14:30:00Z',
+    purchased_at: offsetDate(-8),
+    created_at: offsetDate(-8),
   },
 ];

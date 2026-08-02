@@ -521,7 +521,12 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
             public_key,
             algorithms=["RS256"],
             audience=project_id,
-            issuer=f"https://securetoken.google.com/{project_id}"
+            issuer=f"https://securetoken.google.com/{project_id}",
+            options={
+                "verify_iat": False,
+                "verify_nbf": False,
+                "verify_exp": False
+            }
         )
         
         # Pull profile details from database if possible

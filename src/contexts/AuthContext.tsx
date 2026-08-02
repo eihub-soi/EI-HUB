@@ -162,9 +162,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const switchRole = (newRole: UserRole) => {
     const target = demoProfiles.find((p) => p.role === newRole);
     if (target) {
+      const oldRole = user?.role;
       setUser(target);
       localStorage.setItem('ei_hub_active_user_id', target.id);
       localStorage.setItem('ei_hub_active_user_profile', JSON.stringify(target));
+      mockEngine.logActivity('ROLE_SWITCH', 'USER', target.id, { from: oldRole, to: newRole });
     }
   };
 
@@ -241,7 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 updated_at: new Date().toISOString()
               } as Profile;
               localProfiles.push(newLocalProfile);
-              localStorage.setItem('ei_hub_profiles_v1', JSON.stringify(localProfiles));
+              localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(localProfiles));
               profile = newLocalProfile;
             }
           }
@@ -257,6 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(fullProfile);
             localStorage.setItem('ei_hub_active_user_id', profile.id);
             localStorage.setItem('ei_hub_active_user_profile', JSON.stringify(fullProfile));
+            mockEngine.logActivity('LOGIN', 'USER', profile.id, { email: fullProfile.email, role: fullProfile.role });
             return;
           } else {
             throw new Error('User profile record could not be found.');
@@ -288,6 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(profile as Profile);
             localStorage.setItem('ei_hub_active_user_id', profile.id);
             localStorage.setItem('ei_hub_active_user_profile', JSON.stringify(profile));
+            mockEngine.logActivity('LOGIN', 'USER', profile.id, { email: (profile as Profile).email, role: (profile as Profile).role });
             return;
           } else {
             throw new Error('User profile record could not be found.');
@@ -321,6 +325,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(found);
         localStorage.setItem('ei_hub_active_user_id', found.id);
         localStorage.setItem('ei_hub_active_user_profile', JSON.stringify(found));
+        mockEngine.logActivity('LOGIN', 'USER', found.id, { email: found.email, role: found.role });
       }
     } finally {
       setIsLoading(false);
@@ -433,7 +438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updated_at: new Date().toISOString()
           } as Profile;
           localProfiles.push(newLocalProfile);
-          localStorage.setItem('ei_hub_profiles_v1', JSON.stringify(localProfiles));
+          localStorage.setItem('ei_hub_profiles_v2', JSON.stringify(localProfiles));
           profile = newLocalProfile;
         }
       }
@@ -446,6 +451,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(fullProfile);
         localStorage.setItem('ei_hub_active_user_id', profile.id);
         localStorage.setItem('ei_hub_active_user_profile', JSON.stringify(fullProfile));
+        mockEngine.logActivity('LOGIN', 'USER', profile.id, { email: fullProfile.email, role: fullProfile.role, provider: 'google' });
       }
     } catch (err: any) {
       console.error('Google sign-in error:', err);
@@ -456,6 +462,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    if (user) {
+      mockEngine.logActivity('LOGOUT', 'USER', user.id, { email: user.email, role: user.role });
+    }
     if (isFirebaseConfigured && firebaseAuth) {
       firebaseSignOut(firebaseAuth);
     } else if (isTursoConfigured) {

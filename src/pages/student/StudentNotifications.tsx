@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatTimestamp, parseUTCDate } from '../../utils/timestamp';
 import { NotificationItem } from '../../types';
 import { toast } from 'sonner';
 import { 
@@ -20,7 +21,11 @@ export const StudentNotifications: React.FC = () => {
   );
   const [filter, setFilter] = useState<'All' | 'Unread'>('All');
 
-  const filteredNotifs = notifications.filter(
+  const sortedNotifs = [...notifications].sort((a, b) => {
+    return parseUTCDate(b.created_at).getTime() - parseUTCDate(a.created_at).getTime();
+  });
+
+  const filteredNotifs = sortedNotifs.filter(
     (n) => filter === 'All' || !n.is_read
   );
 
@@ -124,7 +129,7 @@ export const StudentNotifications: React.FC = () => {
                   <h4 className="text-sm font-bold text-white">{n.title}</h4>
                   <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">{n.message}</p>
                   <span className="text-[10px] text-slate-500 block mt-2 font-mono">
-                    {new Date(n.created_at).toLocaleString()}
+                    {formatTimestamp(n.created_at)}
                   </span>
                 </div>
               </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { ActivityLog } from '../../types';
 import { ShieldCheck, Search, Filter, AlertCircle, Info, Lock } from 'lucide-react';
+import { formatTimestamp, parseUTCDate } from '../../utils/timestamp';
 
 export const AuditLogs: React.FC = () => {
   const [logs, setLogs] = useState<ActivityLog[]>(mockEngine.getLogs());
@@ -31,7 +32,13 @@ export const AuditLogs: React.FC = () => {
     };
   }, []);
 
-  const filteredLogs = logs.filter(
+  const sortedLogs = [...logs].sort((a, b) => {
+    const dateA = parseUTCDate(a.created_at).getTime();
+    const dateB = parseUTCDate(b.created_at).getTime();
+    return dateB - dateA;
+  });
+
+  const filteredLogs = sortedLogs.filter(
     (l) =>
       l.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (l.user_name && l.user_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -75,7 +82,7 @@ export const AuditLogs: React.FC = () => {
               {filteredLogs.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-900/40 transition-colors">
                   <td className="py-3.5 px-6 font-mono text-[11px] text-slate-400">
-                    {new Date(log.created_at).toLocaleString()}
+                    {formatTimestamp(log.created_at)}
                   </td>
                   <td className="py-3.5 px-6 font-bold text-white">{log.user_name || 'System User'}</td>
                   <td className="py-3.5 px-6 font-mono font-bold text-indigo-300">{log.action}</td>

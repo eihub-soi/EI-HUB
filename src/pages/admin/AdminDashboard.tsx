@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatTimeOnly } from '../../utils/timestamp';
 import { mockEngine } from '../../services/mockEngine';
 import { StatCard } from '../../components/common/StatCard';
 import { 
@@ -251,7 +252,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
               <span className="text-[10px] text-slate-400 font-mono">
-                {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {formatTimeOnly(log.created_at)}
               </span>
             </div>
           ))}

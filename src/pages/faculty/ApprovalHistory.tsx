@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { BorrowRequest } from '../../types';
+import { formatTimestamp, formatDateOnly, parseUTCDate } from '../../utils/timestamp';
 import { 
   ClipboardList, 
   Search, 
@@ -65,18 +66,6 @@ const parsePurpose = (purposeStr: string) => {
   };
 };
 
-const formatDateDMY = (dateStr: string) => {
-  if (!dateStr) return '';
-  const dateOnly = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-  const parts = dateOnly.split('-');
-  if (parts.length === 3) {
-    if (parts[0].length === 4) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-  }
-  return dateStr;
-};
-
 export const ApprovalHistory: React.FC = () => {
   const [requests] = useState<BorrowRequest[]>(mockEngine.getRequests());
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,7 +83,13 @@ export const ApprovalHistory: React.FC = () => {
     )
   ).sort();
 
-  const historyRequests = requests.filter((r) => {
+  const sortedRequests = [...requests].sort((a, b) => {
+    const dateA = parseUTCDate(a.approved_at || a.requested_at || a.created_at).getTime();
+    const dateB = parseUTCDate(b.approved_at || b.requested_at || b.created_at).getTime();
+    return dateB - dateA;
+  });
+
+  const historyRequests = sortedRequests.filter((r) => {
     if (r.status === 'pending') return false;
 
     const rowDetails = parsePurpose(r.purpose);
@@ -252,9 +247,9 @@ export const ApprovalHistory: React.FC = () => {
                       <td className="py-4 px-6 text-slate-300 max-w-xs truncate">{rowDetails.purpose || req.purpose}</td>
                       <td className="py-4 px-6 text-slate-300 font-semibold">{rowDetails.projectGuide || 'N/A'}</td>
                       <td className="py-4 px-6 text-slate-400 text-[10px]">
-                        <div>Requested: {new Date(req.requested_at).toLocaleDateString()}</div>
+                        <div>Requested: {formatDateOnly(req.requested_at)}</div>
                         <div className="text-indigo-300 mt-0.5 font-semibold">
-                          {rowDetails.fromDate && rowDetails.toDate ? `${formatDateDMY(rowDetails.fromDate)} to ${formatDateDMY(rowDetails.toDate)}` : 'N/A'}
+                          {rowDetails.fromDate && rowDetails.toDate ? `${formatDateOnly(rowDetails.fromDate)} to ${formatDateOnly(rowDetails.toDate)}` : 'N/A'}
                         </div>
                       </td>
                       <td className="py-4 px-6">
@@ -334,11 +329,11 @@ export const ApprovalHistory: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-slate-400 text-[10px]">From Date</p>
-                  <p className="font-bold text-white">{details?.fromDate ? formatDateDMY(details.fromDate) : 'N/A'}</p>
+                  <p className="font-bold text-white">{details?.fromDate ? formatDateOnly(details.fromDate) : 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-slate-400 text-[10px]">To Date</p>
-                  <p className="font-bold text-white">{details?.toDate ? formatDateDMY(details.toDate) : 'N/A'}</p>
+                  <p className="font-bold text-white">{details?.toDate ? formatDateOnly(details.toDate) : 'N/A'}</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-slate-400 text-[10px]">Description & Hardware Notes</p>
@@ -356,7 +351,7 @@ export const ApprovalHistory: React.FC = () => {
                   </div>
                   <div>
                     <p className="font-bold text-white">Submitted by Student</p>
-                    <p className="text-[10px] text-slate-400">{new Date(selectedReq.requested_at).toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.requested_at)}</p>
                   </div>
                 </div>
 
@@ -367,7 +362,7 @@ export const ApprovalHistory: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-white">Approved by Faculty ({selectedReq.approved_by_name || 'Prof. Robert Chen'})</p>
-                      <p className="text-[10px] text-slate-400">{new Date(selectedReq.approved_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.approved_at)}</p>
                       {selectedReq.rejection_reason && selectedReq.status === 'approved' && (
                         <p className="text-[10px] text-emerald-300 mt-0.5">Remark: <span className="italic">"{selectedReq.rejection_reason}"</span></p>
                       )}
@@ -394,7 +389,7 @@ export const ApprovalHistory: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-white">Return Requested by Student</p>
-                      <p className="text-[10px] text-slate-400">{new Date(selectedReq.return_requested_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.return_requested_at)}</p>
                     </div>
                   </div>
                 )}
@@ -406,7 +401,7 @@ export const ApprovalHistory: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-white">Returned & Verified</p>
-                      <p className="text-[10px] text-slate-400">{new Date(selectedReq.returned_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{formatTimestamp(selectedReq.returned_at)}</p>
                       <div className="mt-1 space-y-0.5 p-2 rounded-xl bg-slate-950/60 border border-white/5 text-[10px]">
                         <p className="text-slate-400">Missing Accessories: <span className="text-rose-300 font-semibold">{selectedReq.return_missing_details || 'None'}</span></p>
                         <p className="text-slate-400">Damaged Parts: <span className="text-rose-300 font-semibold">{selectedReq.return_damaged_details || 'None'}</span></p>

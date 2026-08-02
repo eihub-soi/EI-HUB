@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { mockEngine } from '../../services/mockEngine';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDateOnly } from '../../utils/timestamp';
 import { BorrowRequest } from '../../types';
 import { toast } from 'sonner';
 import { RotateCcw, CheckCircle2, Clock, Info, ShieldCheck } from 'lucide-react';
@@ -57,7 +58,7 @@ export const ReturnPortal: React.FC = () => {
                   </div>
                 </div>
                 <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Due: {new Date(req.expected_return_at).toLocaleDateString()}
+                  Due: {formatDateOnly(req.expected_return_at)}
                 </span>
               </div>
 

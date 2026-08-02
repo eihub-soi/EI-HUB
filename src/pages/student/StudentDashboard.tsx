@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatTimeOnly, parseUTCDate } from '../../utils/timestamp';
 import { mockEngine } from '../../services/mockEngine';
 import { StatCard } from '../../components/common/StatCard';
 import { generateStudentReceiptPdf } from '../../utils/pdfGenerator';
@@ -35,7 +36,10 @@ export const StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
 
   const requests = mockEngine.getRequests().filter((r) => r.student_id === user?.id || r.student_id === 'usr-student-1');
-  const notifications = user ? mockEngine.getNotifications(user.id) : [];
+  const rawNotifications = user ? mockEngine.getNotifications(user.id) : [];
+  const notifications = [...rawNotifications].sort((a, b) => {
+    return parseUTCDate(b.created_at).getTime() - parseUTCDate(a.created_at).getTime();
+  });
 
   const borrowedCount = requests.filter((r) => r.status === 'approved' && !r.return_requested_at).length;
   const pendingCount = requests.filter((r) => r.status === 'pending').length;
@@ -188,7 +192,7 @@ export const StudentDashboard: React.FC = () => {
                         <span className="capitalize">{n.title}</span>
                       </span>
                       <span className="text-[10px] text-slate-500 font-mono">
-                        {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatTimeOnly(n.created_at)}
                       </span>
                     </div>
                     <p className="text-slate-300 text-[11px]">{n.message}</p>
